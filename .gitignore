@@ -6,6 +6,8 @@ Thumbs.db
 
 # App-specific
 decisions.json
+decisions.db
+decisions.db-journal
 
 # Python
 *.pyc

@@ -346,5 +346,143 @@
         "Total Score": 5.28
       }
     ]
+  },
+  {
+    "timestamp": "Nov 07, 2025",
+    "datetime": "2025-11-07T22:09:29.736939",
+    "decision": "dfsdf",
+    "options": [
+      "sdfas",
+      "sdfasdf"
+    ],
+    "criteria": [
+      "Cost",
+      "Comfortability",
+      "Time"
+    ],
+    "weights": [
+      0.32258064516129037,
+      0.4516129032258065,
+      0.22580645161290325
+    ],
+    "winner": "sdfasdf",
+    "winner_score": 8.0,
+    "full_results": [
+      {
+        "Option": "sdfasdf",
+        "Cost (1-10)": 8,
+        "Cost (Weighted)": 2.58,
+        "Comfortability (1-10)": 8,
+        "Comfortability (Weighted)": 3.61,
+        "Time (1-10)": 8,
+        "Time (Weighted)": 1.81,
+        "Total Score": 8.0
+      },
+      {
+        "Option": "sdfas",
+        "Cost (1-10)": 8,
+        "Cost (Weighted)": 2.58,
+        "Comfortability (1-10)": 7,
+        "Comfortability (Weighted)": 3.16,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.13,
+        "Total Score": 6.87
+      }
+    ]
+  },
+  {
+    "timestamp": "Nov 07, 2025",
+    "datetime": "2025-11-07T22:24:17.793189",
+    "decision": "ok ",
+    "options": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "criteria": [
+      "Costsdfasdf",
+      "Comfortabilityadsfasdf",
+      "Time",
+      "adsfsdf",
+      "sdfasdf",
+      "dfasdf"
+    ],
+    "weights": [
+      0.04109589041095891,
+      0.136986301369863,
+      0.136986301369863,
+      0.3082191780821918,
+      0.3082191780821918,
+      0.0684931506849315
+    ],
+    "winner": "4",
+    "winner_score": 8.799999999999999,
+    "full_results": [
+      {
+        "Option": "4",
+        "Costsdfasdf (1-10)": 10,
+        "Costsdfasdf (Weighted)": 0.41,
+        "Comfortabilityadsfasdf (1-10)": 7,
+        "Comfortabilityadsfasdf (Weighted)": 0.96,
+        "Time (1-10)": 7,
+        "Time (Weighted)": 0.96,
+        "adsfsdf (1-10)": 9,
+        "adsfsdf (Weighted)": 2.77,
+        "sdfasdf (1-10)": 10,
+        "sdfasdf (Weighted)": 3.08,
+        "dfasdf (1-10)": 9,
+        "dfasdf (Weighted)": 0.62,
+        "Total Score": 8.799999999999999
+      },
+      {
+        "Option": "1",
+        "Costsdfasdf (1-10)": 5,
+        "Costsdfasdf (Weighted)": 0.21,
+        "Comfortabilityadsfasdf (1-10)": 5,
+        "Comfortabilityadsfasdf (Weighted)": 0.68,
+        "Time (1-10)": 7,
+        "Time (Weighted)": 0.96,
+        "adsfsdf (1-10)": 8,
+        "adsfsdf (Weighted)": 2.47,
+        "sdfasdf (1-10)": 9,
+        "sdfasdf (Weighted)": 2.77,
+        "dfasdf (1-10)": 9,
+        "dfasdf (Weighted)": 0.62,
+        "Total Score": 7.71
+      },
+      {
+        "Option": "3",
+        "Costsdfasdf (1-10)": 5,
+        "Costsdfasdf (Weighted)": 0.21,
+        "Comfortabilityadsfasdf (1-10)": 7,
+        "Comfortabilityadsfasdf (Weighted)": 0.96,
+        "Time (1-10)": 8,
+        "Time (Weighted)": 1.1,
+        "adsfsdf (1-10)": 5,
+        "adsfsdf (Weighted)": 1.54,
+        "sdfasdf (1-10)": 5,
+        "sdfasdf (Weighted)": 1.54,
+        "dfasdf (1-10)": 5,
+        "dfasdf (Weighted)": 0.34,
+        "Total Score": 5.6899999999999995
+      },
+      {
+        "Option": "2",
+        "Costsdfasdf (1-10)": 5,
+        "Costsdfasdf (Weighted)": 0.21,
+        "Comfortabilityadsfasdf (1-10)": 5,
+        "Comfortabilityadsfasdf (Weighted)": 0.68,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 0.68,
+        "adsfsdf (1-10)": 5,
+        "adsfsdf (Weighted)": 1.54,
+        "sdfasdf (1-10)": 5,
+        "sdfasdf (Weighted)": 1.54,
+        "dfasdf (1-10)": 5,
+        "dfasdf (Weighted)": 0.34,
+        "Total Score": 4.99
+      }
+    ]
   }
 ]

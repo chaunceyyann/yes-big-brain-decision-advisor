@@ -8,12 +8,20 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from database import authenticate_user, create_user
+from database import delete_decision as db_delete_decision
+from database import get_decision_by_id, get_user_decisions, init_database
+from database import save_decision as db_save_decision
+
 # === CONFIG ===
 st.set_page_config(
     page_title="Yes? AI Decision Guide", page_icon="✅", layout="centered"
 )
 
-# File path for decisions storage
+# Initialize database
+init_database()
+
+# File path for decisions storage (for migration)
 DECISIONS_FILE = "decisions.json"
 
 
@@ -65,40 +73,212 @@ with st.expander(
             st.session_state["has_seen_welcome"] = True
             st.rerun()
 
-# Sidebar: Mock Login + History
+# Sidebar: User Authentication + History
 with st.sidebar:
     st.header("👤 Account")
-    if st.checkbox("Enable Sync (Mock Login)", value=True):
-        st.success("Synced across devices")
+
+    # Initialize user session state
+    if "user_id" not in st.session_state:
+        st.session_state["user_id"] = None
+    if "username" not in st.session_state:
+        st.session_state["username"] = None
+    if "show_login" not in st.session_state:
+        st.session_state["show_login"] = True
+    if "show_signup" not in st.session_state:
+        st.session_state["show_signup"] = False
+    # Initialize temporary decisions storage
+    if "temp_decisions" not in st.session_state:
+        st.session_state["temp_decisions"] = []
+
+    # User authentication UI
+    if st.session_state["user_id"] is None:
+        # Not logged in - show login/signup
+        if st.session_state["show_signup"]:
+            st.subheader("📝 Sign Up")
+            new_username = st.text_input("Username", key="signup_username")
+            new_password = st.text_input(
+                "Password", type="password", key="signup_password"
+            )
+            confirm_password = st.text_input(
+                "Confirm Password", type="password", key="signup_confirm"
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Sign Up", type="primary", width="stretch"):
+                    if not new_username or not new_password:
+                        st.error("Please enter username and password")
+                    elif new_password != confirm_password:
+                        st.error("Passwords do not match")
+                    else:
+                        user_id = create_user(new_username, new_password)
+                        if user_id:
+                            st.session_state["user_id"] = user_id
+                            st.session_state["username"] = new_username
+                            st.session_state["show_signup"] = False
+                            # Migrate temporary decisions to database if any exist
+                            temp_decisions = st.session_state.get("temp_decisions", [])
+                            if temp_decisions:
+                                migrated_count = 0
+                                for temp_decision in temp_decisions:
+                                    try:
+                                        db_save_decision(
+                                            user_id=user_id,
+                                            decision=temp_decision["decision"],
+                                            options=temp_decision["options"],
+                                            criteria=temp_decision["criteria"],
+                                            weights=temp_decision["weights"],
+                                            scores=temp_decision["scores"],
+                                            winner=temp_decision["winner"],
+                                            winner_score=temp_decision["winner_score"],
+                                        )
+                                        migrated_count += 1
+                                    except Exception:
+                                        pass  # Skip failed migrations
+                                if migrated_count > 0:
+                                    st.session_state["temp_decisions"] = []
+                                    st.success(
+                                        f"Welcome, {new_username}! Migrated {migrated_count} temporary decision(s)."
+                                    )
+                                else:
+                                    st.success(f"Welcome, {new_username}!")
+                            else:
+                                st.success(f"Welcome, {new_username}!")
+                            st.rerun()
+                        else:
+                            st.error("Username already exists")
+            with col2:
+                if st.button("Back to Login", width="stretch"):
+                    st.session_state["show_signup"] = False
+                    st.rerun()
+        else:
+            st.subheader("🔐 Login")
+            username = st.text_input("Username", key="login_username")
+            password = st.text_input("Password", type="password", key="login_password")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Login", type="primary", width="stretch"):
+                    if not username or not password:
+                        st.error("Please enter username and password")
+                    else:
+                        user_id = authenticate_user(username, password)
+                        if user_id:
+                            st.session_state["user_id"] = user_id
+                            st.session_state["username"] = username
+                            # Migrate temporary decisions to database if any exist
+                            temp_decisions = st.session_state.get("temp_decisions", [])
+                            if temp_decisions:
+                                migrated_count = 0
+                                for temp_decision in temp_decisions:
+                                    try:
+                                        db_save_decision(
+                                            user_id=user_id,
+                                            decision=temp_decision["decision"],
+                                            options=temp_decision["options"],
+                                            criteria=temp_decision["criteria"],
+                                            weights=temp_decision["weights"],
+                                            scores=temp_decision["scores"],
+                                            winner=temp_decision["winner"],
+                                            winner_score=temp_decision["winner_score"],
+                                        )
+                                        migrated_count += 1
+                                    except Exception:
+                                        pass  # Skip failed migrations
+                                if migrated_count > 0:
+                                    st.session_state["temp_decisions"] = []
+                                    st.success(
+                                        f"Welcome back, {username}! Migrated {migrated_count} temporary decision(s)."
+                                    )
+                                else:
+                                    st.success(f"Welcome back, {username}!")
+                            else:
+                                st.success(f"Welcome back, {username}!")
+                            st.rerun()
+                        else:
+                            st.error("Invalid username or password")
+            with col2:
+                if st.button("Sign Up", width="stretch"):
+                    st.session_state["show_signup"] = True
+                    st.rerun()
     else:
-        st.warning("Offline mode")
+        # Logged in - show user info and logout
+        st.success(f"✅ Logged in as **{st.session_state['username']}**")
+        if st.button("🚪 Logout", width="stretch"):
+            st.session_state["user_id"] = None
+            st.session_state["username"] = None
+            # Clear any loaded decision data
+            for key in ["load_decision", "decision_to_load", "show_load_confirm"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
 
     st.header("📜 Past Decisions")
-    # Load decisions from local JSON file
-    if os.path.exists(DECISIONS_FILE):
-        try:
-            with open(DECISIONS_FILE, "r") as f:
-                all_decisions = json.load(f)
-            # Display most recent 5 decisions
-            if all_decisions:
-                for idx, decision_data in enumerate(all_decisions[-5:]):
-                    entry = f"{decision_data['decision']} → **{decision_data['winner']}** ({decision_data['winner_score']:.1f})"
-                    # Create a button that covers both emoji and text
+
+    # Load decisions from database for logged-in user
+    if st.session_state["user_id"] is not None:
+        user_decisions = get_user_decisions(st.session_state["user_id"], limit=10)
+        if user_decisions:
+            for idx, decision_data in enumerate(user_decisions):
+                entry = f"{decision_data['decision']} → **{decision_data['winner']}** ({decision_data['winner_score']:.1f})"
+                # Create a button that covers both emoji and text
+                col1, col2 = st.columns([4, 1])
+                with col1:
                     if st.button(
                         f"📋 {entry}",
-                        key=f"load_{idx}_{len(all_decisions)}",
+                        key=f"load_{decision_data['id']}",
                         help=f"Load this decision",
                         width="stretch",
                     ):
                         # Store the decision to load in session state
                         st.session_state["decision_to_load"] = decision_data
                         st.session_state["show_load_confirm"] = True
-            else:
-                st.write("• No decisions saved yet")
-        except (json.JSONDecodeError, KeyError) as e:
-            st.write("• No valid decisions found")
+                with col2:
+                    if st.button(
+                        "🗑️",
+                        key=f"delete_{decision_data['id']}",
+                        help="Delete this decision",
+                    ):
+                        if db_delete_decision(
+                            decision_data["id"], st.session_state["user_id"]
+                        ):
+                            st.success("Decision deleted")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete decision")
+        else:
+            st.write("• No decisions saved yet")
     else:
-        st.write("• No decisions saved yet")
+        # Show temporary decisions for non-logged-in users
+        temp_decisions = st.session_state.get("temp_decisions", [])
+        if temp_decisions:
+            st.caption(
+                "💡 *Temporary decisions (lost on refresh). Log in to save permanently.*"
+            )
+            for idx, decision_data in enumerate(temp_decisions):
+                entry = f"{decision_data['decision']} → **{decision_data['winner']}** ({decision_data['winner_score']:.1f})"
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    if st.button(
+                        f"📋 {entry}",
+                        key=f"load_temp_{idx}",
+                        help=f"Load this temporary decision",
+                        width="stretch",
+                    ):
+                        # Store the decision to load in session state
+                        st.session_state["decision_to_load"] = decision_data
+                        st.session_state["show_load_confirm"] = True
+                with col2:
+                    if st.button(
+                        "🗑️",
+                        key=f"delete_temp_{idx}",
+                        help="Delete this temporary decision",
+                    ):
+                        st.session_state["temp_decisions"].pop(idx)
+                        st.success("Decision deleted")
+                        st.rerun()
+        else:
+            st.info("👆 Log in to save permanently, or save temporarily below")
 
 # === CONFIRMATION DIALOG ===
 # Confirmation dialog for loading a decision (in main area)
@@ -428,9 +608,14 @@ with st.container(border=True):
 # === SAVE DECISION ===
 with st.container(border=True):
     st.markdown("### 💾 Save Your Decision")
-    st.caption(
-        "💡 Save this decision to review later. You can load it from the sidebar anytime."
-    )
+    if st.session_state["user_id"] is None:
+        st.caption(
+            "💡 Save temporarily (lost on refresh) or log in to save permanently. You can load it from the sidebar anytime."
+        )
+    else:
+        st.caption(
+            "💡 Save this decision to review later. You can load it from the sidebar anytime."
+        )
 
     if st.button("💾 Save This Decision", width="stretch"):
         timestamp = datetime.now().strftime("%b %d, %Y")
@@ -438,7 +623,18 @@ with st.container(border=True):
             f"{decision} → **{df.iloc[0]['Option']}** ({df.iloc[0]['Total Score']:.1f})"
         )
 
-        # Save to local file
+        # Prepare scores dictionary for database from DataFrame
+        # The DataFrame already has all the scores we need
+        scores_dict = {}
+        for opt_idx, opt in enumerate(options):
+            scores_dict[opt] = {}
+            for param_idx, param in enumerate(params):
+                # Get score from DataFrame
+                score_col = f"{param} (1-10)"
+                score = float(df[df["Option"] == opt][score_col].iloc[0])
+                scores_dict[opt][param] = score
+
+        # Prepare decision data
         decision_data = {
             "timestamp": timestamp,
             "datetime": datetime.now().isoformat(),
@@ -449,23 +645,33 @@ with st.container(border=True):
             "winner": df.iloc[0]["Option"],
             "winner_score": float(df.iloc[0]["Total Score"]),
             "full_results": df.to_dict("records"),
+            "scores": scores_dict,
         }
 
-        # Load existing decisions or create new list
-        if os.path.exists(DECISIONS_FILE):
-            with open(DECISIONS_FILE, "r") as f:
-                all_decisions = json.load(f)
+        if st.session_state["user_id"] is None:
+            # Save temporarily to session state
+            if "temp_decisions" not in st.session_state:
+                st.session_state["temp_decisions"] = []
+            st.session_state["temp_decisions"].append(decision_data)
+            st.success(f"💾 Saved temporarily: {entry}")
+            st.info(
+                "💡 *This decision will be lost on refresh. Log in to save permanently.*"
+            )
         else:
-            all_decisions = []
+            # Save to database
+            decision_id = db_save_decision(
+                user_id=st.session_state["user_id"],
+                decision=decision,
+                options=options,
+                criteria=params,
+                weights=weights,
+                scores=scores_dict,
+                winner=df.iloc[0]["Option"],
+                winner_score=float(df.iloc[0]["Total Score"]),
+            )
+            decision_data["id"] = decision_id
+            st.success(f"✅ Saved permanently: {entry}")
 
-        # Append new decision
-        all_decisions.append(decision_data)
-
-        # Save back to file
-        with open(DECISIONS_FILE, "w") as f:
-            json.dump(all_decisions, f, indent=2)
-
-        st.success(f"Saved: {entry}")
         st.rerun()  # Refresh the app to update Past Decisions
 
 # === FULL TABLE ===
