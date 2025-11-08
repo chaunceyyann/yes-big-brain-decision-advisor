@@ -1,0 +1,752 @@
+name: Fork Governance
+
+on:
+  fork:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repository name (e.g., aws-app-Test)'
+        required: false
+        default: 'aws-app-Test'
+        type: string
+      nuke_repo:
+        description: 'Nuke repository before applying governance (removes all files, sets default to main, deletes dev branch)'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  setup-forked-repo:
+    name: Apply governance to forked repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout template repository
+        uses: actions/checkout@v5
+
+      - name: Nuke target repository completely
+        if: ${{ github.event.inputs.nuke_repo == 'true' }}
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ github.event.inputs.target_repo && 'cyan-prod' || github.event.forkee.owner.login }}';
+            const forkRepo = '${{ github.event.inputs.target_repo || github.event.forkee.name }}';
+
+            console.log(`🔥 NUKING ${forkOwner}/${forkRepo} completely...`);
+
+            try {
+              // 1. Delete all existing rulesets
+              console.log('🗑️ Deleting all rulesets...');
+              const rulesets = await github.rest.repos.getRepoRulesets({
+                owner: forkOwner,
+                repo: forkRepo
+              });
+
+              for (const ruleset of rulesets.data) {
+                await github.rest.repos.deleteRepoRuleset({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  ruleset_id: ruleset.id
+                });
+                console.log(`✓ Deleted ruleset: ${ruleset.name}`);
+              }
+
+              // 2. Delete all issues
+              console.log('🗑️ Deleting all issues...');
+              const issues = await github.rest.issues.listForRepo({
+                owner: forkOwner,
+                repo: forkRepo,
+                state: 'all',
+                per_page: 100
+              });
+
+              for (const issue of issues.data) {
+                await github.rest.issues.update({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  issue_number: issue.number,
+                  state: 'closed'
+                });
+                console.log(`✓ Closed issue #${issue.number}: ${issue.title}`);
+              }
+
+              console.log(`✓ Closed ${issues.data.length} issues`);
+
+              // 3. Set default branch back to main first
+              console.log('🔄 Setting default branch to main...');
+              await github.rest.repos.update({
+                owner: forkOwner,
+                repo: forkRepo,
+                default_branch: 'main'
+              });
+              console.log('✓ Set default branch to main');
+
+              // 4. Delete dev branch if it exists
+              console.log('🗑️ Deleting dev branch...');
+              try {
+                await github.rest.git.deleteRef({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  ref: 'heads/dev'
+                });
+                console.log('✓ Deleted dev branch');
+              } catch (error) {
+                if (error.status === 422) {
+                  console.log('Dev branch does not exist or is protected');
+                } else {
+                  console.log('Failed to delete dev branch:', error.message);
+                }
+              }
+
+              // 5. Sync from upstream template
+              console.log('🔄 Syncing from upstream template...');
+
+              // Get the latest commit from the template repository
+              const templateMain = await github.rest.repos.getBranch({
+                owner: 'cyan-prod',
+                repo: 'aws-app-template',
+                branch: 'main'
+              });
+
+              // Force update the forked repo to match template
+              await github.rest.git.updateRef({
+                owner: forkOwner,
+                repo: forkRepo,
+                ref: 'heads/main',
+                sha: templateMain.data.commit.sha,
+                force: true
+              });
+
+              console.log('✓ Synced from upstream template');
+              console.log(`🔥 ${forkOwner}/${forkRepo} has been completely NUKED and synced!`);
+              console.log(`🛑 Workflow stopped - repository is ready for testing`);
+
+              // Stop the workflow by exiting with code 1
+              process.exit(1);
+
+            } catch (error) {
+              console.log('Repository nuking failed:', error.message);
+              console.log(`🛑 Workflow stopped anyway - repository is ready for testing`);
+
+              // Stop the workflow by exiting with code 1 (even on error)
+              process.exit(1);
+            }
+
+      - name: Get repository details
+        id: repo-info
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let repoOwner, repoName, repoFullName, repoUrl;
+
+            if (context.eventName === 'fork') {
+              // Fork event - get details from payload
+              repoOwner = context.payload.forkee.owner.login;
+              repoName = context.payload.forkee.name;
+              repoFullName = context.payload.forkee.full_name;
+              repoUrl = context.payload.forkee.html_url;
+              console.log(`Fork detected: ${repoFullName}`);
+            } else if (context.eventName === 'workflow_dispatch') {
+              // Manual dispatch - use input with cyan-prod as owner
+              repoName = '${{ github.event.inputs.target_repo }}';
+              repoOwner = 'cyan-prod';
+              repoFullName = `${repoOwner}/${repoName}`;
+              repoUrl = `https://github.com/${repoFullName}`;
+              console.log(`Manual dispatch for: ${repoFullName}`);
+            }
+
+            console.log(`Repository: ${repoFullName}`);
+            console.log(`URL: ${repoUrl}`);
+
+            core.setOutput('owner', repoOwner);
+            core.setOutput('repo', repoName);
+            core.setOutput('full_name', repoFullName);
+            core.setOutput('url', repoUrl);
+
+      - name: Validate repository naming convention
+        id: validate-name
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repoName = '${{ steps.repo-info.outputs.repo }}';
+            const namePattern = /^aws-[a-z0-9]+(-[a-z0-9]+)*$/;
+
+            console.log(`Validating repository name: ${repoName}`);
+
+            if (!namePattern.test(repoName)) {
+              console.log('❌ Repository name does NOT follow convention');
+
+              let issues = [];
+
+              if (!repoName.startsWith('aws-')) {
+                issues.push('Must start with "aws-"');
+              }
+
+              if (repoName !== repoName.toLowerCase()) {
+                issues.push('Must be all lowercase');
+              }
+
+              if (repoName.includes('_')) {
+                issues.push('Use hyphens (-) not underscores (_)');
+              }
+
+              if (/[A-Z]/.test(repoName)) {
+                issues.push('No uppercase letters allowed');
+              }
+
+              const suggestion = repoName
+                .toLowerCase()
+                .replace(/[_\s]+/g, '-')
+                .replace(/^(?!aws-)/, 'aws-');
+
+              core.setOutput('valid', 'false');
+              core.setOutput('issues', issues.join('; '));
+              core.setOutput('suggestion', suggestion);
+            } else {
+              console.log('✓ Repository name follows convention');
+              core.setOutput('valid', 'true');
+            }
+
+      - name: Clean up governance files on main branch
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+
+            console.log('Cleaning up template-specific files from main branch...');
+
+            // Files to delete (no longer needed in forked repos)
+            // Edit this list directly to add/remove files
+            const filesToDelete = [
+              'rulesets/branch-protection.json',
+              'rulesets/tag-protection.json',
+              'rulesets/branch-naming.json',
+              'rulesets/commit-message.json',
+              'rulesets/README.md', // Only delete the rulesets README, not the root README
+              '.github/workflows/fork-governance.yaml',
+              '.github/workflows/apply-rulesets.yaml'
+            ];
+
+            console.log(`Files to remove: ${filesToDelete.join(', ')}`);
+
+            // Get current main branch tree
+            const mainRef = await github.rest.git.getRef({
+              owner: forkOwner,
+              repo: forkRepo,
+              ref: 'heads/main'
+            });
+            const currentCommitSha = mainRef.data.object.sha;
+
+            const currentCommit = await github.rest.git.getCommit({
+              owner: forkOwner,
+              repo: forkRepo,
+              commit_sha: currentCommitSha
+            });
+
+            // Get the current tree recursively
+            const currentTree = await github.rest.git.getTree({
+              owner: forkOwner,
+              repo: forkRepo,
+              tree_sha: currentCommit.data.tree.sha,
+              recursive: 'true'
+            });
+
+            const updatedFiles = [];
+
+            // Update README.md
+            try {
+              const readmeContent = await github.rest.repos.getContent({
+                owner: forkOwner,
+                repo: forkRepo,
+                path: 'README.md'
+              });
+
+              const currentContent = Buffer.from(readmeContent.data.content, 'base64').toString();
+
+              const updatedContent = currentContent
+                .replace(/Template repo to spin off application on AWS/g, `AWS application repository for ${forkRepo}`)
+                .replace(/aws-app-template/g, forkRepo)
+                .replace(/cyan-prod\/aws-app-template/g, `${forkOwner}/${forkRepo}`)
+                .replace(/## Repository Rulesets[\\s\\S]*?(?=## Pull Request Template)/g, '');
+
+              const readmeBlob = await github.rest.git.createBlob({
+                owner: forkOwner,
+                repo: forkRepo,
+                content: updatedContent,
+                encoding: 'utf-8'
+              });
+
+              updatedFiles.push({
+                path: 'README.md',
+                mode: '100644',
+                type: 'blob',
+                sha: readmeBlob.data.sha
+              });
+
+              console.log(`✓ Prepared updated README.md for ${forkRepo}`);
+            } catch (error) {
+              console.error('Failed to prepare README.md update:', error.message);
+            }
+
+            // Update .github/workflows/README.md
+            try {
+              const workflowsReadmeContent = await github.rest.repos.getContent({
+                owner: forkOwner,
+                repo: forkRepo,
+                path: '.github/workflows/README.md'
+              });
+
+              const currentWorkflowsContent = Buffer.from(workflowsReadmeContent.data.content, 'base64').toString();
+
+              const updatedWorkflowsContent = currentWorkflowsContent
+                .replace(/aws-app-template/g, forkRepo)
+                .replace(/cyan-prod\/aws-app-template/g, `${forkOwner}/${forkRepo}`)
+                // Remove sections about deleted workflows
+                .replace(/### `fork-governance\\.yaml`[\\s\\S]*?---\\n\\n/, '')
+                .replace(/## What Fork Governance Does[\\s\\S]*?---\\n\\n/, '')
+                .replace(/## Setup Required: GH_PAT Secret[\\s\\S]*?---\\n\\n/, '');
+
+              const workflowsBlob = await github.rest.git.createBlob({
+                owner: forkOwner,
+                repo: forkRepo,
+                content: updatedWorkflowsContent,
+                encoding: 'utf-8'
+              });
+
+              updatedFiles.push({
+                path: '.github/workflows/README.md',
+                mode: '100644',
+                type: 'blob',
+                sha: workflowsBlob.data.sha
+              });
+
+              console.log(`✓ Prepared updated .github/workflows/README.md for ${forkRepo}`);
+            } catch (error) {
+              console.error('Failed to prepare .github/workflows/README.md update:', error.message);
+            }
+
+            // Filter out files to delete and files to update
+            const newTreeItems = currentTree.data.tree
+              .filter(item => !filesToDelete.includes(item.path) && !updatedFiles.some(u => u.path === item.path))
+              .map(item => ({
+                path: item.path,
+                mode: item.mode,
+                type: item.type,
+                sha: item.sha
+              }));
+
+            // Add updated files to the tree
+            newTreeItems.push(...updatedFiles);
+
+            console.log(`Original files: ${currentTree.data.tree.length}, After cleanup and updates: ${newTreeItems.length}`);
+
+            // Create new tree
+            const tree = await github.rest.git.createTree({
+              owner: forkOwner,
+              repo: forkRepo,
+              tree: newTreeItems
+            });
+
+            // Create a single clean commit (orphan - no history)
+            const cleanCommit = await github.rest.git.createCommit({
+              owner: forkOwner,
+              repo: forkRepo,
+              message: 'Initial commit - forked from aws-app-template with customizations',
+              tree: tree.data.sha,
+              parents: [] // No parents = orphan commit (clean history)
+            });
+
+            // Force update main branch to the clean commit
+            await github.rest.git.updateRef({
+              owner: forkOwner,
+              repo: forkRepo,
+              ref: 'heads/main',
+              sha: cleanCommit.data.sha,
+              force: true
+            });
+
+            console.log(`✓ Created clean commit history with single commit: ${cleanCommit.data.sha}`);
+            console.log(`✓ Repository now has clean history with only essential files and updated READMEs`);
+
+      - name: Apply repository rulesets
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+
+            console.log(`\nApplying rulesets to ${forkOwner}/${forkRepo}...\n`);
+
+            const rulesetDir = 'rulesets';
+            const rulesetFiles = fs.readdirSync(rulesetDir)
+              .filter(file => file.endsWith('.json'));
+
+            const results = [];
+
+            for (const file of rulesetFiles) {
+              const filePath = path.join(rulesetDir, file);
+              const rulesetConfig = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+              console.log(`Processing: ${file} - ${rulesetConfig.name}`);
+
+              try {
+                const response = await github.rest.repos.createRepoRuleset({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  ...rulesetConfig
+                });
+
+                console.log(`✓ Applied: ${rulesetConfig.name} (ID: ${response.data.id})`);
+                results.push({ file, status: 'success', name: rulesetConfig.name });
+              } catch (error) {
+                console.error(`✗ Failed: ${rulesetConfig.name} - ${error.message}`);
+                results.push({ file, status: 'failed', name: rulesetConfig.name, error: error.message });
+              }
+            }
+
+            const successCount = results.filter(r => r.status === 'success').length;
+            const failCount = results.filter(r => r.status === 'failed').length;
+
+            console.log(`\n=== Summary ===`);
+            console.log(`Total: ${results.length} | Success: ${successCount} | Failed: ${failCount}`);
+
+            return results;
+
+      - name: Create dev branch from cleaned main and set as default
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+
+            try {
+              // Check if dev branch exists
+              await github.rest.repos.getBranch({
+                owner: forkOwner,
+                repo: forkRepo,
+                branch: 'dev'
+              });
+              console.log('Dev branch already exists');
+            } catch (error) {
+              if (error.status === 404) {
+                console.log('Creating dev branch from cleaned main...');
+
+                // Get main branch ref (now cleaned)
+                const mainBranch = await github.rest.repos.getBranch({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  branch: 'main'
+                });
+
+                // Create dev branch from main
+                await github.rest.git.createRef({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  ref: 'refs/heads/dev',
+                  sha: mainBranch.data.commit.sha
+                });
+
+                console.log('✓ Dev branch created from cleaned main');
+              } else {
+                throw error;
+              }
+            }
+
+            // Set dev as default branch
+            try {
+              await github.rest.repos.update({
+                owner: forkOwner,
+                repo: forkRepo,
+                default_branch: 'dev'
+              });
+              console.log('✓ Set dev as default branch');
+            } catch (error) {
+              console.error('Failed to set default branch:', error.message);
+              throw new Error(`Failed to set dev as default branch: ${error.message}`);
+            }
+
+      - name: Create environments
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+
+            const environments = ['dev', 'staging', 'prod'];
+
+            const failedEnvs = [];
+            for (const env of environments) {
+              try {
+                await github.rest.repos.createOrUpdateEnvironment({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  environment_name: env
+                });
+                console.log(`✓ Created environment: ${env}`);
+              } catch (error) {
+                console.error(`Failed to create ${env}:`, error.message);
+                failedEnvs.push(env);
+              }
+            }
+
+            if (failedEnvs.length > 0) {
+              throw new Error(`Failed to create environments: ${failedEnvs.join(', ')}`);
+            }
+
+      - name: Enable security features
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+
+            const failedFeatures = [];
+
+            // Enable vulnerability alerts
+            try {
+              await github.rest.repos.enableVulnerabilityAlerts({
+                owner: forkOwner,
+                repo: forkRepo
+              });
+              console.log('✓ Enabled vulnerability alerts');
+            } catch (error) {
+              console.error('Failed to enable vulnerability alerts:', error.message);
+              failedFeatures.push('vulnerability alerts');
+            }
+
+            // Enable automated security fixes (Dependabot)
+            try {
+              await github.rest.repos.enableAutomatedSecurityFixes({
+                owner: forkOwner,
+                repo: forkRepo
+              });
+              console.log('✓ Enabled Dependabot security updates');
+            } catch (error) {
+              console.error('Failed to enable Dependabot:', error.message);
+              failedFeatures.push('Dependabot security updates');
+            }
+
+            // Enable auto-delete head branches
+            try {
+              await github.rest.repos.update({
+                owner: forkOwner,
+                repo: forkRepo,
+                delete_branch_on_merge: true
+              });
+              console.log('✓ Enabled auto-delete branch after merge');
+            } catch (error) {
+              console.error('Failed to enable auto-delete:', error.message);
+              failedFeatures.push('auto-delete branch');
+            }
+
+            if (failedFeatures.length > 0) {
+              throw new Error(`Failed to enable security features: ${failedFeatures.join(', ')}`);
+            }
+
+      - name: Check required files updated
+        id: check-files
+        uses: actions/github-script@v8
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+
+            const requiredFiles = ['README.md', 'CONTRIBUTING.md'];
+            const warnings = [];
+
+            for (const file of requiredFiles) {
+              try {
+                const { data } = await github.rest.repos.getContent({
+                  owner: forkOwner,
+                  repo: forkRepo,
+                  path: file
+                });
+
+                const content = Buffer.from(data.content, 'base64').toString();
+
+                // Check if file still contains template placeholder text
+                if (file === 'README.md') {
+                  if (content.includes('Template repo to spin off application on AWS')) {
+                    warnings.push('README.md still contains template text - needs customization');
+                  }
+                }
+
+                if (file === 'CONTRIBUTING.md') {
+                  if (content.includes('aws-app-template')) {
+                    warnings.push('CONTRIBUTING.md still references template name - needs update');
+                  }
+                }
+
+                console.log(`✓ ${file} exists`);
+              } catch (error) {
+                warnings.push(`${file} is missing`);
+                console.error(`✗ ${file} not found`);
+              }
+            }
+
+            core.setOutput('warnings', warnings.join('; '));
+            return warnings;
+
+      - name: Create setup notification issue
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_PAT_CLASSIC }}
+          script: |
+            const forkOwner = '${{ steps.repo-info.outputs.owner }}';
+            const forkRepo = '${{ steps.repo-info.outputs.repo }}';
+            const nameValid = '${{ steps.validate-name.outputs.valid }}';
+            const nameIssues = '${{ steps.validate-name.outputs.issues }}';
+            const nameSuggestion = '${{ steps.validate-name.outputs.suggestion }}';
+            const fileWarnings = '${{ steps.check-files.outputs.warnings }}';
+
+            let body = `# 🎉 Repository Setup Complete\n\n`;
+            body += `This repository has been forked from the AWS app template and governance rules have been applied.\n\n`;
+
+            // Naming validation
+            body += `## 📝 Repository Naming\n\n`;
+            if (nameValid === 'true') {
+              body += `✅ **Repository name follows convention**: \`${forkRepo}\`\n\n`;
+            } else {
+              body += `⚠️ **Repository name does NOT follow convention**\n\n`;
+              body += `**Current name:** \`${forkRepo}\`\n`;
+              body += `**Issues:** ${nameIssues}\n`;
+              body += `**Suggested name:** \`${nameSuggestion}\`\n\n`;
+              body += `**Convention:** Repository names must:\n`;
+              body += `- Start with \`aws-\`\n`;
+              body += `- Use lowercase letters only\n`;
+              body += `- Use kebab-case (hyphens, not underscores)\n`;
+              body += `- Example: \`aws-user-service\`, \`aws-payment-api\`\n\n`;
+              body += `To rename: **Settings** → **General** → **Repository name**\n\n`;
+            }
+
+            // Applied rules
+            body += `## 🔒 Applied Governance Rules\n\n`;
+            body += `The following rulesets have been applied:\n\n`;
+            body += `- ✅ **Branch Protection** - \`main\` and \`dev\` require PR approval\n`;
+            body += `- ✅ **Tag Protection** - \`v*\` tags cannot be force-pushed or deleted\n`;
+            body += `- ✅ **Branch Naming** - Must follow \`type/jira-123\` pattern (lowercase, kebab-case)\n`;
+            body += `- ✅ **Commit Messages** - Must follow \`jira-123: description\` pattern (lowercase)\n\n`;
+
+            // Required status checks
+            body += `## ⚙️ Required Status Checks\n\n`;
+            body += `Before merging to \`main\` or \`dev\`, these checks must pass:\n\n`;
+            body += `- \`pr-checks\` - Linting, formatting, testing\n`;
+            body += `- \`static-code-scan\` - Security and code quality scanning\n`;
+            body += `- \`terraform-plan\` - Infrastructure validation\n\n`;
+            body += `**Action Required:** Create these workflow files in \`.github/workflows/\`\n\n`;
+
+            // Branch setup
+            body += `## 🌿 Branch Setup\n\n`;
+            body += `- ✅ \`main\` - Production branch (protected)\n`;
+            body += `- ✅ \`dev\` - Development branch (protected, **default**)\n\n`;
+
+            // Environment setup
+            body += `## 🌍 Environments Created\n\n`;
+            body += `- ✅ \`dev\` - Development environment\n`;
+            body += `- ✅ \`staging\` - Staging environment\n`;
+            body += `- ✅ \`prod\` - Production environment\n\n`;
+            body += `Configure environment-specific settings in **Settings** → **Environments**\n\n`;
+
+            // Security features
+            body += `## 🔒 Security Features Enabled\n\n`;
+            body += `- ✅ Vulnerability alerts\n`;
+            body += `- ✅ Dependabot security updates\n`;
+            body += `- ✅ Auto-delete branch after merge\n\n`;
+
+            // Cleanup
+            body += `## 🧹 Template Files Cleaned Up\n\n`;
+            body += `The following template-specific files have been automatically removed:\n`;
+            body += `- \`rulesets/\` directory - Rulesets already applied to this repo\n`;
+            body += `- \`.github/workflows/fork-governance.yaml\` - No longer needed\n`;
+            body += `- \`.github/workflows/apply-rulesets.yaml\` - No longer needed\n\n`;
+            body += `**Note:** All governance rules are already active via GitHub Rulesets (check Settings → Rules → Rulesets)\n\n`;
+
+            // Required files check
+            if (fileWarnings) {
+              body += `## ⚠️ Required Files Need Attention\n\n`;
+              const warningList = fileWarnings.split('; ');
+              for (const warning of warningList) {
+                body += `- ⚠️ ${warning}\n`;
+              }
+              body += `\n**Action Required:** Update these files with your project-specific information.\n\n`;
+            } else {
+              body += `## ✅ Required Files\n\n`;
+              body += `- ✅ README.md exists\n`;
+              body += `- ✅ CONTRIBUTING.md exists\n\n`;
+            }
+
+            // Next steps
+            body += `## 🚀 Next Steps\n\n`;
+            if (nameValid !== 'true') {
+              body += `1. **Fix repository name** (see naming section above)\n`;
+            }
+            if (fileWarnings) {
+              body += `1. **Update required files** (see warnings above)\n`;
+            }
+            body += `1. **Create required workflow files** for status checks:\n`;
+            body += `   - \`.github/workflows/pr-checks.yaml\`\n`;
+            body += `   - \`.github/workflows/static-code-scan.yaml\`\n`;
+            body += `   - \`.github/workflows/terraform-plan.yaml\`\n`;
+            body += `1. **Customize README.md** with your project details\n`;
+            body += `1. **Configure environments** in Settings → Environments (add secrets, protection rules)\n`;
+            body += `1. **Set up AWS credentials** in repository secrets\n`;
+            body += `1. **Start developing** - create feature branches following \`type/jira-123\` pattern\n\n`;
+
+            // PR template
+            body += `## 📝 Pull Request Template\n\n`;
+            body += `A PR template has been included at \`.github/pull_request_template.md\`\n`;
+            body += `It will automatically appear when creating PRs and is **enforced by code review**.\n\n`;
+
+            // Documentation
+            body += `## 📚 Documentation\n\n`;
+            body += `- [Contributing Guidelines](./CONTRIBUTING.md)\n`;
+            body += `- [Repository Rulesets](./rulesets/README.md)\n`;
+            body += `- [Architecture Diagram](./docs/architect.drawio.png)\n\n`;
+            body += `---\n\n`;
+            body += `*This issue was automatically created by the Fork Governance workflow.*`;
+
+            // Create the issue
+            const labels = ['setup'];
+            if (nameValid !== 'true' || fileWarnings) {
+              labels.push('action-required');
+            }
+            if (nameValid !== 'true') {
+              labels.push('naming-convention');
+            }
+            if (fileWarnings) {
+              labels.push('documentation');
+            }
+
+            const issue = await github.rest.issues.create({
+              owner: forkOwner,
+              repo: forkRepo,
+              title: (nameValid !== 'true' || fileWarnings)
+                ? '⚠️ Repository Setup Complete - Action Required'
+                : '✅ Repository Setup Complete - Review Governance Rules',
+              body: body,
+              labels: labels
+            });
+
+            console.log(`✓ Created issue #${issue.data.number}: ${issue.data.html_url}`);
+
+      - name: Notify in template repo
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const forkFullName = '${{ steps.repo-info.outputs.full_name }}';
+            const forkUrl = '${{ steps.repo-info.outputs.url }}';
+
+            console.log(`Fork created: ${forkFullName}`);
+            console.log(`URL: ${forkUrl}`);
+            console.log('✓ Governance rules applied successfully');

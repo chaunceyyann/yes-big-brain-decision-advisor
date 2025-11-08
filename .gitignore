@@ -1,0 +1,42 @@
+# General
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+*.whl
+
+# JavaScript / Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+/dist
+/build
+*.bundle.js
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# GitHub Actions
+# No specific ignores, but including for completeness

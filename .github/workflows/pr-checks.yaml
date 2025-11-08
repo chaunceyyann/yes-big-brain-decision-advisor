@@ -1,0 +1,36 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+
+jobs:
+  pre-commit:
+    name: Pre-commit Checks
+    uses: cyan-prod/cyan-actions/.github/workflows/reusable-pre-commit.yml@dev
+    with:
+      python-version: '3.x'
+      fetch-depth: '0'
+
+  terraform-lint:
+    name: Terraform Lint
+    uses: cyan-prod/cyan-actions/.github/workflows/reusable-terraform-lint.yml@dev
+    with:
+      working-directory: '.'
+      tflint-version: 'latest'
+      aws-ruleset-version: 'latest'
+      fetch-depth: '0'
+
+  pr-status-comment:
+    name: Comment PR Status
+    needs: [pre-commit, terraform-lint]
+    if: always()
+    uses: cyan-prod/cyan-actions/.github/workflows/reusable-pr-status-commenter.yml@dev
+    with:
+      required-checks: "pre-commit,terraform-lint"

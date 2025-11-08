@@ -1,0 +1,23 @@
+{
+  "name": "commit message convention",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~ALL"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "commit_message_pattern",
+      "parameters": {
+        "name": "Commit message: jira-123: description or deps-auto: description (lowercase)",
+        "negate": false,
+        "operator": "regex",
+        "pattern": "^(deps-auto|[a-z0-9]+(-[a-z0-9]+)*):\\s.+"
+      }
+    }
+  ],
+  "bypass_actors": []
+}
