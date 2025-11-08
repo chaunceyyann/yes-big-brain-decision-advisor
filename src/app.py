@@ -596,8 +596,57 @@ with st.container(border=True):
             key="use_ai_checkbox",
         )
         st.session_state["use_ai"] = use_ai
+
+        # API selection checkboxes for auto-generation
+        has_openai_api = available_apis.get("openai", False)
+        has_xai_api = available_apis.get("xai", False)
+
+        if has_openai_api or has_xai_api:
+            col_openai, col_xai = st.columns(2)
+
+            with col_openai:
+                use_openai = st.checkbox(
+                    "🤖 OpenAI GPT",
+                    value=st.session_state.get("use_openai_ai", has_openai_api),
+                    disabled=not has_openai_api,
+                    help=(
+                        "Use OpenAI GPT for AI generation"
+                        if has_openai_api
+                        else "OpenAI API key not configured"
+                    ),
+                    key="use_openai_ai_checkbox",
+                )
+                st.session_state["use_openai_ai"] = (
+                    use_openai if has_openai_api else False
+                )
+
+            with col_xai:
+                use_xai = st.checkbox(
+                    "🤖 xAI Grok",
+                    value=st.session_state.get("use_xai_ai", has_xai_api),
+                    disabled=not has_xai_api,
+                    help=(
+                        "Use xAI Grok for AI generation"
+                        if has_xai_api
+                        else "xAI API key not configured"
+                    ),
+                    key="use_xai_ai_checkbox",
+                )
+                st.session_state["use_xai_ai"] = use_xai if has_xai_api else False
+
+            # Determine which API to use based on checkboxes
+            # Priority: xAI if both checked, then OpenAI, then fallback
+            if st.session_state.get("use_xai_ai", False) and has_xai_api:
+                st.session_state["preferred_ai_api"] = "xai"
+            elif st.session_state.get("use_openai_ai", False) and has_openai_api:
+                st.session_state["preferred_ai_api"] = "openai"
+            else:
+                st.session_state["preferred_ai_api"] = None  # Fallback
+        else:
+            st.session_state["preferred_ai_api"] = None
     else:
         st.session_state["use_ai"] = False
+        st.session_state["preferred_ai_api"] = None
 
 # Parse and process options
 raw_options = options_text.strip().splitlines()
@@ -653,8 +702,21 @@ with st.container(border=True):
             if has_any_api:
                 with st.spinner("🤖 AI is generating criteria, weights, and scores..."):
                     try:
-                        # Determine which API to use
-                        api_type = "openai" if has_openai else "xai"
+                        # Determine which API to use based on user preference
+                        preferred_api = st.session_state.get("preferred_ai_api", None)
+                        if preferred_api and available_apis.get(preferred_api, False):
+                            api_type = preferred_api
+                        elif has_openai:
+                            api_type = "openai"
+                        elif has_xai:
+                            api_type = "xai"
+                        else:
+                            api_type = None
+
+                        if not api_type:
+                            st.error("⚠️ No API available for generation")
+                            st.stop()
+
                         api_key = (
                             st.secrets.get("openai", {}).get("api_key")
                             if api_type == "openai"
@@ -1032,26 +1094,52 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
         has_openai = False
         has_xai = False
 
-    # API selection (if both are available)
+    # API selection checkboxes for final recommendation
     preferred_api = None
-    if has_openai and has_xai:
-        api_choice = st.radio(
-            "Choose AI model:",
-            ["Auto-select (GPT preferred)", "OpenAI GPT", "xAI Grok"],
-            horizontal=True,
-            help="Select which AI model to use for recommendations",
-        )
-        if api_choice == "OpenAI GPT":
-            preferred_api = "openai"
-        elif api_choice == "xAI Grok":
+    if has_openai or has_xai:
+        col_openai_rec, col_xai_rec = st.columns(2)
+
+        with col_openai_rec:
+            use_openai_rec = st.checkbox(
+                "🤖 OpenAI GPT",
+                value=st.session_state.get("use_openai_rec", has_openai),
+                disabled=not has_openai,
+                help=(
+                    "Use OpenAI GPT for recommendation"
+                    if has_openai
+                    else "OpenAI API key not configured"
+                ),
+                key="use_openai_rec_checkbox",
+            )
+            st.session_state["use_openai_rec"] = use_openai_rec if has_openai else False
+
+        with col_xai_rec:
+            use_xai_rec = st.checkbox(
+                "🤖 xAI Grok",
+                value=st.session_state.get("use_xai_rec", has_xai),
+                disabled=not has_xai,
+                help=(
+                    "Use xAI Grok for recommendation"
+                    if has_xai
+                    else "xAI API key not configured"
+                ),
+                key="use_xai_rec_checkbox",
+            )
+            st.session_state["use_xai_rec"] = use_xai_rec if has_xai else False
+
+        # Determine which API to use based on checkboxes
+        # Priority: xAI if both checked, then OpenAI, then fallback
+        if st.session_state.get("use_xai_rec", False) and has_xai:
             preferred_api = "xai"
-        # "Auto-select" means preferred_api = None
-    elif has_openai:
-        st.info("🤖 Using OpenAI GPT")
-        preferred_api = "openai"
-    elif has_xai:
-        st.info("🤖 Using xAI Grok")
-        preferred_api = "xai"
+        elif st.session_state.get("use_openai_rec", False) and has_openai:
+            preferred_api = "openai"
+        else:
+            preferred_api = None  # Fallback
+
+        if preferred_api is None:
+            st.warning(
+                "⚠️ No AI selected. Using fallback recommendation. Check at least one AI above."
+            )
     else:
         st.warning(
             "⚠️ No API keys configured. Using fallback recommendation. Configure API keys in Streamlit secrets to get real AI recommendations."
