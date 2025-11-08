@@ -1,94 +1,119 @@
-# aws-app-template
-Template repo to spin off application on AWS
+# ✅ Yes? - Big Brain Decision Advisor
 
-## Architecture
+**The AI that turns 'maybe' into 'hell yes' — with math, visuals, and zero fluff.**
 
-![Architecture Diagram](./docs/architect.drawio.png)
+![PR Checks](https://github.com/chaunceyyann/yes-big-brain-decision-advisor/actions/workflows/pr-checks.yaml/badge.svg)
 
-## Repository Rules
+## Goal
 
-This repository enforces strict rules for branch naming, commit messages, and protected branches.
+Yes? is a decision-making tool that helps you make better choices by combining structured analysis with AI-powered recommendations. Instead of relying on gut feelings, Yes? helps you:
 
-### Branch Naming Convention
-- **Pattern:** `type/jira-123` (lowercase, kebab-case)
-- **Examples:** `feature/jira-123`, `bugfix/proj-456`, `hotfix/issue-789`
+1. **Define your decision clearly** — What are you trying to decide?
+2. **List all options** — What are your choices?
+3. **Set criteria & weights** — What matters most to you? (e.g., Cost, Comfortability, Time)
+4. **Score each option** — Rate how well each option performs on each criterion (1-10)
+5. **Get ranked results** — See which option scores highest based on your priorities
+6. **Receive AI recommendations** — Get a confident, human-sounding recommendation
+7. **Save & revisit** — Keep a history of your decisions for future reference
 
-### Commit Message Convention
-- **Pattern:** `jira-123: description` or `deps-auto: description` (lowercase)
-- **Examples:** `jira-123: add user authentication`, `deps-auto: update terraform`
+## Features
 
-### Protected Branches
-- **`main`** - Production branch (requires PR with 1 approval)
-- **`dev`** - Development branch (requires PR with 1 approval)
-
-No force pushes or deletions allowed on protected branches.
-
-### Version Tags
-- **Pattern:** `v*` (e.g., `v1.0.0`, `v2.1.3-alpha`)
-- Protected from force updates and deletions
-
-### Required Status Checks
-Before merging to `main` or `dev`, the following checks must pass:
-- `pr-checks` - PR validation and testing
-- `static-code-scan` - Security and code quality scanning
-- `terraform-plan` - Infrastructure validation
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
-
-## Repository Rulesets
-
-All rules are defined in `/rulesets/` and automatically applied via GitHub Actions.
-
-See [rulesets/README.md](./rulesets/README.md) for details.
-
-### Fork Governance
-
-When you fork this template, a workflow automatically:
-- ✅ Validates repo name follows `aws-*` convention
-- ✅ Applies all rulesets to your fork
-- ✅ Creates `dev` branch and sets as default
-- ✅ Creates environments: `dev`, `staging`, `prod`
-- ✅ Enables Dependabot & vulnerability alerts
-- ✅ Enables auto-delete branch after merge
-- ✅ Checks required files are updated
-- ✅ Creates setup issue with instructions
-
-**Setup:** Template repo needs `GH_PAT` secret. See [.github/workflows/README.md](./.github/workflows/README.md).
-
-## Pull Request Template
-
-A PR template is included at `.github/pull_request_template.md` that automatically appears when creating PRs. It ensures:
-- Description and JIRA ticket are provided
-- Type of change is specified
-- Testing checklist is completed
-- Code review standards are followed
-
-**Enforcement:** The template is enforced through code review - PRs without proper completion will not be approved.
+- 📊 **Visual ranking** with interactive bar charts
+- ⚖️ **Weighted scoring** system that respects your priorities
+- 🤖 **AI-powered recommendations** (ready for xAI/OpenAI integration)
+- 💾 **Decision history** — Save and load past decisions
+- 📱 **Clean, intuitive UI** built with Streamlit
 
 ## Getting Started
 
+### Prerequisites
+
+- Python 3.13+
+- pip
+
+### Installation
+
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd aws-app-template
+   git clone git@github.com:chaunceyyann/yes-big-brain-decision-advisor.git
+   cd yes-big-brain-decision-advisor
    ```
 
-2. **Create a feature branch**
+2. **Install dependencies**
    ```bash
-   git checkout -b feature/jira-123
+   pip install streamlit pandas numpy plotly
    ```
 
-3. **Make changes and commit**
+3. **Run the app**
    ```bash
-   git add .
-   git commit -m "jira-123: implement new feature"
+   streamlit run src/app.py
    ```
 
-4. **Push and create PR**
-   ```bash
-   git push origin feature/jira-123
-   ```
+The app will open in your browser at `http://localhost:8501`
+
+## How It Works
+
+1. Enter your decision question (e.g., "Which car should I buy?")
+2. List your options (one per line)
+3. Set up to 3 criteria with weights (defaults: Cost, Comfortability, Time)
+4. Score each option against each criterion (1-10 scale)
+5. View the ranked results and get an AI recommendation
+6. Save your decision to review later
+
+## Decision-Making Flow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    USER INPUTS                               │
+├──────────────────────────────────────────────────────────────┤
+│  • Decision Question                                         │
+│  • Options (e.g., Option A, Option B, Option C)              │
+│  • Criteria & Weights (e.g., Cost 40%, Comfort 35%, Time 25%)│
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  SCORING PROCESS                             │
+├──────────────────────────────────────────────────────────────┤
+│  For each Option × Criterion:                                │
+│  • Rate performance (1-10 scale)                             │
+│  • Calculate weighted score = Score × Weight                 │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    CALCULATION                               │
+├──────────────────────────────────────────────────────────────┤
+│  • Sum weighted scores for each option                       │
+│  • Calculate Total Score = Σ(Weighted Scores)                │
+│  • Rank options by Total Score (highest = best)              │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     OUTPUT                                   │
+├──────────────────────────────────────────────────────────────┤
+│  • Visual ranking chart (bar graph)                          │
+│  • AI recommendation (confident, human-sounding)             │
+│  • Save to decisions.json for future reference               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Decision Storage
+
+All decisions are saved locally in `decisions.json` in the project root. You can:
+- View past decisions in the sidebar
+- Click the 📋 button to load a previous decision
+- All data persists across sessions
+
+## Future Enhancements
+
+- [ ] Integrate xAI/OpenAI API for real AI recommendations
+- [ ] Support for more than 3 criteria
+- [ ] Export decisions to CSV/PDF
+- [ ] Cloud sync for decision history
+- [ ] Decision comparison tool
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+This is a personal project, but suggestions and improvements are welcome!

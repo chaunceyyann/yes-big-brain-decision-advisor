@@ -1,17 +1,19 @@
 # app.py
-import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime
-import plotly.express as px
 import json
 import os
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import streamlit as st
 
 # === CONFIG ===
 st.set_page_config(page_title="Yes? AI Decision Guide", page_icon="✅", layout="wide")
 
 # File path for decisions storage
 DECISIONS_FILE = "decisions.json"
+
 
 # === MOCK AI (Replace with xAI / OpenAI later) ===
 def get_ai_recommendation(decision, options, df, params, weights):
@@ -27,9 +29,12 @@ def get_ai_recommendation(decision, options, df, params, weights):
     # In real version: call xAI API here
     return f"**Yes? says:** Go with **{top['Option']}**. It crushes on your top priorities — {params[0]} and {params[1] if len(params)>1 else ''}. The numbers don’t lie."
 
+
 # === APP ===
 st.title("✅ Yes?")
-st.markdown("*The AI that turns 'maybe' into 'hell yes' — with math, visuals, and zero fluff.*")
+st.markdown(
+    "*The AI that turns 'maybe' into 'hell yes' — with math, visuals, and zero fluff.*"
+)
 
 # Sidebar: Mock Login + History
 with st.sidebar:
@@ -43,7 +48,7 @@ with st.sidebar:
     # Load decisions from local JSON file
     if os.path.exists(DECISIONS_FILE):
         try:
-            with open(DECISIONS_FILE, 'r') as f:
+            with open(DECISIONS_FILE, "r") as f:
                 all_decisions = json.load(f)
             # Display most recent 5 decisions
             if all_decisions:
@@ -52,10 +57,15 @@ with st.sidebar:
                     # Create a button next to each decision
                     col1, col2 = st.columns([1.5, 8.5])
                     with col1:
-                        if st.button("📋", key=f"load_{idx}_{len(all_decisions)}", help=f"Load: {entry}", use_container_width=True):
+                        if st.button(
+                            "📋",
+                            key=f"load_{idx}_{len(all_decisions)}",
+                            help=f"Load: {entry}",
+                            use_container_width=True,
+                        ):
                             # Store the decision to load in session state
-                            st.session_state['decision_to_load'] = decision_data
-                            st.session_state['show_load_confirm'] = True
+                            st.session_state["decision_to_load"] = decision_data
+                            st.session_state["show_load_confirm"] = True
                     with col2:
                         st.write(f"• {entry}")
             else:
@@ -67,25 +77,30 @@ with st.sidebar:
 
 # === CONFIRMATION DIALOG ===
 # Confirmation dialog for loading a decision (in main area)
-if st.session_state.get('show_load_confirm', False) and 'decision_to_load' in st.session_state:
-    decision_to_load = st.session_state['decision_to_load']
+if (
+    st.session_state.get("show_load_confirm", False)
+    and "decision_to_load" in st.session_state
+):
+    decision_to_load = st.session_state["decision_to_load"]
     st.warning(f"⚠️ **Load this decision?** This will replace your current inputs.")
     with st.container():
         col1, col2 = st.columns([2, 1])
         with col1:
             st.write(f"**Decision:** {decision_to_load['decision']}")
             st.write(f"**Options:** {', '.join(decision_to_load['options'])}")
-            st.write(f"**Winner:** {decision_to_load['winner']} ({decision_to_load['winner_score']:.1f})")
+            st.write(
+                f"**Winner:** {decision_to_load['winner']} ({decision_to_load['winner_score']:.1f})"
+            )
         with col2:
             st.write("")
             if st.button("✅ Yes, Load It", key="confirm_load", type="primary"):
-                st.session_state['load_decision'] = decision_to_load
-                st.session_state['show_load_confirm'] = False
+                st.session_state["load_decision"] = decision_to_load
+                st.session_state["show_load_confirm"] = False
                 st.rerun()
             if st.button("❌ Cancel", key="cancel_load"):
-                st.session_state['show_load_confirm'] = False
-                if 'decision_to_load' in st.session_state:
-                    del st.session_state['decision_to_load']
+                st.session_state["show_load_confirm"] = False
+                if "decision_to_load" in st.session_state:
+                    del st.session_state["decision_to_load"]
                 st.rerun()
     st.markdown("---")
 
@@ -95,26 +110,26 @@ col_btn, _ = st.columns([1, 4])
 with col_btn:
     if st.button("🧠 New Decision", help="Clear all fields and start fresh"):
         # Clear all session state related to loading
-        for key in ['load_decision', 'decision_to_load', 'show_load_confirm']:
+        for key in ["load_decision", "decision_to_load", "show_load_confirm"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.success("Fresh start!")
         st.rerun()
 
 # Check if we need to load a decision
-if 'load_decision' in st.session_state:
-    load_data = st.session_state['load_decision']
-    loaded_decision = load_data['decision']
-    loaded_options = '\n'.join(load_data['options'])
-    loaded_criteria = load_data['criteria']
-    loaded_weights = load_data['weights']
+if "load_decision" in st.session_state:
+    load_data = st.session_state["load_decision"]
+    loaded_decision = load_data["decision"]
+    loaded_options = "\n".join(load_data["options"])
+    loaded_criteria = load_data["criteria"]
+    loaded_weights = load_data["weights"]
     loaded_scores = {}  # Extract scores from full_results
-    for result in load_data['full_results']:
-        option = result['Option']
+    for result in load_data["full_results"]:
+        option = result["Option"]
         loaded_scores[option] = {}
         for param in loaded_criteria:
             loaded_scores[option][param] = result.get(f"{param} (1-10)", 5)
-    del st.session_state['load_decision']
+    del st.session_state["load_decision"]
 else:
     loaded_decision = ""
     loaded_options = ""
@@ -124,13 +139,17 @@ else:
 
 col1, col2 = st.columns(2)
 with col1:
-    decision = st.text_input("What are you deciding?", value=loaded_decision, placeholder="e.g., Quit job? Move cities? Buy Tesla?")
+    decision = st.text_input(
+        "What are you deciding?",
+        value=loaded_decision,
+        placeholder="e.g., Quit job? Move cities? Buy Tesla?",
+    )
 with col2:
     options_text = st.text_area(
         "List your options (one per line):",
         value=loaded_options,
         placeholder="Stay at current job\nSwitch to remote role\nStart freelance",
-        height=120
+        height=120,
     )
 
 options = options_text.strip().splitlines()
@@ -150,9 +169,16 @@ default_criteria = ["Cost", "Comfortability", "Time"]
 # Use loaded criteria if available, otherwise use defaults
 for i in range(3):
     with cols[i % 3]:
-        default_value = loaded_criteria[i] if i < len(loaded_criteria) else default_criteria[i]
+        default_value = (
+            loaded_criteria[i] if i < len(loaded_criteria) else default_criteria[i]
+        )
         default_weight = loaded_weights[i] if i < len(loaded_weights) else 0.33
-        param = st.text_input(f"Criteria {i+1}", value=default_value, key=f"p{i}", placeholder="e.g., Income")
+        param = st.text_input(
+            f"Criteria {i+1}",
+            value=default_value,
+            key=f"p{i}",
+            placeholder="e.g., Income",
+        )
         weight = st.slider(f"Weight", 0.0, 1.0, default_weight, 0.05, key=f"w{i}")
         if param:
             params.append(param)
@@ -178,12 +204,20 @@ for opt in options:
         for j, param in enumerate(params):
             with score_cols[j]:
                 # Get loaded score if available
-                default_score = loaded_scores.get(opt, {}).get(param, 5) if loaded_scores else 5
+                default_score = (
+                    loaded_scores.get(opt, {}).get(param, 5) if loaded_scores else 5
+                )
                 score = st.slider(
                     param,
-                    1, 10, int(default_score) if isinstance(default_score, (int, float)) else 5,
+                    1,
+                    10,
+                    (
+                        int(default_score)
+                        if isinstance(default_score, (int, float))
+                        else 5
+                    ),
                     key=f"score_{opt}_{j}",
-                    help=f"Rate {opt} on {param} (1-10)"
+                    help=f"Rate {opt} on {param} (1-10)",
                 )
                 weighted = score * weights[j]
                 data[f"{param} (1-10)"].append(score)
@@ -197,13 +231,19 @@ df = df.sort_values("Total Score", ascending=False).reset_index(drop=True)
 # === VISUAL RANKING ===
 st.subheader("🏆 Ranked Results")
 fig = px.bar(
-    df, x="Total Score", y="Option", orientation='h',
-    text="Total Score", color="Total Score",
+    df,
+    x="Total Score",
+    y="Option",
+    orientation="h",
+    text="Total Score",
+    color="Total Score",
     color_continuous_scale="emrld",
-    title="Your Best Path (Higher = Better)"
+    title="Your Best Path (Higher = Better)",
 )
-fig.update_traces(texttemplate='%{x:.1f}', textposition='outside')
-fig.update_layout(yaxis={'categoryorder':'total ascending'}, height=300 + len(options)*50)
+fig.update_traces(texttemplate="%{x:.1f}", textposition="outside")
+fig.update_layout(
+    yaxis={"categoryorder": "total ascending"}, height=300 + len(options) * 50
+)
 st.plotly_chart(fig, use_container_width=True)
 
 # === AI RECOMMENDATION ===
@@ -225,14 +265,14 @@ if st.button("💾 Save This Decision"):
         "options": options,
         "criteria": params,
         "weights": weights,
-        "winner": df.iloc[0]['Option'],
-        "winner_score": float(df.iloc[0]['Total Score']),
-        "full_results": df.to_dict('records')
+        "winner": df.iloc[0]["Option"],
+        "winner_score": float(df.iloc[0]["Total Score"]),
+        "full_results": df.to_dict("records"),
     }
 
     # Load existing decisions or create new list
     if os.path.exists(DECISIONS_FILE):
-        with open(DECISIONS_FILE, 'r') as f:
+        with open(DECISIONS_FILE, "r") as f:
             all_decisions = json.load(f)
     else:
         all_decisions = []
@@ -241,7 +281,7 @@ if st.button("💾 Save This Decision"):
     all_decisions.append(decision_data)
 
     # Save back to file
-    with open(DECISIONS_FILE, 'w') as f:
+    with open(DECISIONS_FILE, "w") as f:
         json.dump(all_decisions, f, indent=2)
 
     st.success(f"Saved: {entry}")
@@ -251,8 +291,14 @@ if st.button("💾 Save This Decision"):
 with st.expander("📊 View Full Matrix"):
     # Format only numeric columns, excluding the Option column
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    st.dataframe(df.style.format("{:.2f}", subset=numeric_cols).background_gradient(cmap="Greens", subset=["Total Score"]))
+    st.dataframe(
+        df.style.format("{:.2f}", subset=numeric_cols).background_gradient(
+            cmap="Greens", subset=["Total Score"]
+        )
+    )
 
 # === FOOTER ===
 st.markdown("---")
-st.caption("Yes? • AI-Powered Decision Guide • Built to beat Darwin • [Deploy yours → streamlit.io](https://streamlit.io)")
+st.caption(
+    "Yes? • AI-Powered Decision Guide • Built to beat Darwin • [Deploy yours → streamlit.io](https://streamlit.io)"
+)
