@@ -5,6 +5,11 @@ This script creates a default user and migrates all decisions to that user.
 
 import json
 import os
+import sys
+from pathlib import Path
+
+# Add src directory to path to import database module
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from database import (create_user, get_db_connection, init_database,
                       save_decision)

@@ -1,6 +1,5 @@
 # app.py
-import json
-import os
+import logging
 from datetime import datetime
 
 import numpy as np
@@ -8,6 +7,15 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+from api_clients import (call_openai_gpt, call_xai_grok,
+                         get_ai_criteria_suggestions,
+                         get_ai_weight_suggestions, get_available_apis)
 from database import authenticate_user, create_user
 from database import delete_decision as db_delete_decision
 from database import get_decision_by_id, get_user_decisions, init_database
@@ -21,12 +29,23 @@ st.set_page_config(
 # Initialize database
 init_database()
 
-# File path for decisions storage (for migration)
-DECISIONS_FILE = "decisions.json"
 
+# === AI RECOMMENDATION (OpenAI GPT / xAI Grok) ===
+def get_ai_recommendation(decision, options, df, params, weights, preferred_api=None):
+    """
+    Get AI recommendation using OpenAI GPT or xAI Grok API, with fallback to mock.
 
-# === MOCK AI (Replace with xAI / OpenAI later) ===
-def get_ai_recommendation(decision, options, df, params, weights):
+    Args:
+        decision: Decision question
+        options: List of options
+        df: DataFrame with scores
+        params: List of criteria
+        weights: List of weights
+        preferred_api: Preferred API to use ('openai', 'xai', or None for auto-select)
+
+    Returns:
+        AI recommendation string
+    """
     top = df.iloc[0]
     prompt = f"""
     Decision: {decision}
@@ -36,8 +55,61 @@ def get_ai_recommendation(decision, options, df, params, weights):
 
     Give a confident, concise, human-sounding recommendation in 2-3 sentences.
     """
-    # In real version: call xAI API here
-    return f"**Yes? says:** Go with **{top['Option']}**. It crushes on your top priorities — {params[0]} and {params[1] if len(params)>1 else ''}. The numbers don’t lie."
+    system_prompt = "You are a confident, helpful decision advisor. Give concise, actionable recommendations in 2-3 sentences."
+
+    # Check available APIs
+    try:
+        available_apis = get_available_apis(st.secrets)
+    except Exception:
+        available_apis = {"openai": False, "xai": False}
+
+    # Determine which API to use
+    api_to_use = None
+    if preferred_api and available_apis.get(preferred_api, False):
+        api_to_use = preferred_api
+    elif available_apis.get("openai", False):
+        api_to_use = "openai"
+    elif available_apis.get("xai", False):
+        api_to_use = "xai"
+
+    recommendation = None
+
+    # Try OpenAI GPT first (if selected or auto-selected)
+    if api_to_use == "openai":
+        try:
+            # Get OpenAI API key from Streamlit secrets
+            # Local: reads from .streamlit/secrets.toml
+            # Cloud: reads from Streamlit Cloud dashboard secrets
+            openai_key = st.secrets.get("openai", {}).get("api_key")
+            recommendation = call_openai_gpt(openai_key, prompt, system_prompt)
+            if recommendation:
+                return f"**Yes? (GPT) says:** {recommendation}"
+            else:
+                st.warning("⚠️ OpenAI API error, trying fallback...")
+                logging.error("OpenAI API call failed - check logs for details")
+        except Exception as e:
+            st.warning(f"⚠️ OpenAI API error: {str(e)}, trying fallback...")
+            logging.error(f"OpenAI API exception: {str(e)}", exc_info=True)
+
+    # Try xAI Grok (if selected or OpenAI failed)
+    if api_to_use == "xai" or (api_to_use == "openai" and not recommendation):
+        try:
+            # Get xAI API key from Streamlit secrets
+            # Local: reads from .streamlit/secrets.toml
+            # Cloud: reads from Streamlit Cloud dashboard secrets
+            xai_key = st.secrets.get("xai", {}).get("api_key")
+            recommendation = call_xai_grok(xai_key, prompt, system_prompt)
+            if recommendation:
+                return f"**Yes? (Grok) says:** {recommendation}"
+            else:
+                st.warning("⚠️ xAI API error, using fallback recommendation")
+                logging.error("xAI API call failed - check logs for details")
+        except Exception as e:
+            st.warning(f"⚠️ xAI API error: {str(e)}, using fallback recommendation")
+            logging.error(f"xAI API exception: {str(e)}", exc_info=True)
+
+    # Fallback to mock recommendation
+    return f"**Yes? says:** Go with **{top['Option']}**. It crushes on your top priorities — {params[0]} and {params[1] if len(params)>1 else ''}. The numbers don't lie."
 
 
 # === APP ===
@@ -402,6 +474,104 @@ with st.container(border=True):
         "💡 Criteria are the factors that matter to you. Weights determine how important each criterion is (they'll be normalized automatically)."
     )
 
+    # Check available APIs for AI suggestions
+    try:
+        available_apis = get_available_apis(st.secrets)
+        has_openai = available_apis.get("openai", False)
+        has_xai = available_apis.get("xai", False)
+        has_any_api = has_openai or has_xai
+    except Exception:
+        has_any_api = False
+        has_openai = False
+        has_xai = False
+
+    # AI Suggestions section
+    if decision and options and has_any_api:
+        st.markdown("#### 🤖 AI Suggestions")
+        col_ai1, col_ai2 = st.columns(2)
+        with col_ai1:
+            if st.button(
+                "✨ AI Suggest Criteria",
+                help="Let AI suggest relevant criteria for your decision",
+            ):
+                with st.spinner("AI is thinking about your decision..."):
+                    try:
+                        # Determine which API to use
+                        api_type = "openai" if has_openai else "xai"
+                        api_key = (
+                            st.secrets.get("openai", {}).get("api_key")
+                            if api_type == "openai"
+                            else st.secrets.get("xai", {}).get("api_key")
+                        )
+
+                        suggestions = get_ai_criteria_suggestions(
+                            decision, options, api_key, api_type
+                        )
+                        if suggestions:
+                            # Update criteria count and set suggested criteria
+                            st.session_state["num_criteria"] = len(suggestions)
+                            for i, criterion in enumerate(suggestions):
+                                st.session_state[f"p{i}"] = criterion
+                            st.success(f"✨ AI suggested: {', '.join(suggestions)}")
+                            st.rerun()
+                        else:
+                            st.error(
+                                "⚠️ Could not generate AI suggestions. Please try again."
+                            )
+                    except Exception as e:
+                        st.error(f"⚠️ Error getting AI suggestions: {str(e)}")
+                        logging.error(
+                            f"AI criteria suggestion error: {str(e)}", exc_info=True
+                        )
+
+        with col_ai2:
+            if st.button(
+                "⚖️ AI Suggest Weights",
+                help="Let AI suggest relative importance weights",
+            ):
+                # Collect current criteria from session state
+                current_criteria = []
+                num_criteria = st.session_state.get("num_criteria", 3)
+                for i in range(num_criteria):
+                    criterion = st.session_state.get(f"p{i}", "")
+                    if criterion:
+                        current_criteria.append(criterion)
+
+                if not current_criteria:
+                    st.warning("⚠️ Please set criteria first")
+                else:
+                    with st.spinner("AI is analyzing importance..."):
+                        try:
+                            # Determine which API to use
+                            api_type = "openai" if has_openai else "xai"
+                            api_key = (
+                                st.secrets.get("openai", {}).get("api_key")
+                                if api_type == "openai"
+                                else st.secrets.get("xai", {}).get("api_key")
+                            )
+
+                            suggestions = get_ai_weight_suggestions(
+                                decision, options, current_criteria, api_key, api_type
+                            )
+                            if suggestions:
+                                # Update weights based on suggestions
+                                for i, criterion in enumerate(current_criteria):
+                                    if criterion in suggestions:
+                                        st.session_state[f"w{i}"] = suggestions[
+                                            criterion
+                                        ]
+                                st.success("✨ AI suggested weights applied!")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "⚠️ Could not generate AI weight suggestions. Please try again."
+                                )
+                        except Exception as e:
+                            st.error(f"⚠️ Error getting AI weight suggestions: {str(e)}")
+                            logging.error(
+                                f"AI weight suggestion error: {str(e)}", exc_info=True
+                            )
+
     # Initialize criteria count in session state
     if "num_criteria" not in st.session_state:
         # Use loaded criteria count if available, otherwise default to 3
@@ -595,14 +765,51 @@ with st.container(border=True):
     )
     st.plotly_chart(fig, width="stretch")
 
-# === AI RECOMMENDATION ===
-with st.container(border=True):
-    st.markdown("### 🤖 Get AI Recommendation")
-    st.caption("💡 Get a confident, human-sounding recommendation based on your scores")
+# === AI RECOMMENDATION (Optional) ===
+with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
+    st.caption(
+        "💡 Get additional AI insights (the highest score already shows the best option)"
+    )
+
+    # Check available APIs
+    try:
+        available_apis = get_available_apis(st.secrets)
+        has_openai = available_apis.get("openai", False)
+        has_xai = available_apis.get("xai", False)
+    except Exception:
+        has_openai = False
+        has_xai = False
+
+    # API selection (if both are available)
+    preferred_api = None
+    if has_openai and has_xai:
+        api_choice = st.radio(
+            "Choose AI model:",
+            ["Auto-select (GPT preferred)", "OpenAI GPT", "xAI Grok"],
+            horizontal=True,
+            help="Select which AI model to use for recommendations",
+        )
+        if api_choice == "OpenAI GPT":
+            preferred_api = "openai"
+        elif api_choice == "xAI Grok":
+            preferred_api = "xai"
+        # "Auto-select" means preferred_api = None
+    elif has_openai:
+        st.info("🤖 Using OpenAI GPT")
+        preferred_api = "openai"
+    elif has_xai:
+        st.info("🤖 Using xAI Grok")
+        preferred_api = "xai"
+    else:
+        st.warning(
+            "⚠️ No API keys configured. Using fallback recommendation. Configure API keys in Streamlit secrets to get real AI recommendations."
+        )
 
     if st.button("🤖 Get AI Verdict", type="primary", width="stretch"):
         with st.spinner("Yes? is thinking..."):
-            verdict = get_ai_recommendation(decision, options, df, params, weights)
+            verdict = get_ai_recommendation(
+                decision, options, df, params, weights, preferred_api
+            )
             st.info(verdict)
 
 # === SAVE DECISION ===

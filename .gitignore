@@ -12,6 +12,9 @@ decisions.db-journal
 # Wiki (not used - GitHub wiki requires paid plan)
 wiki/
 
+# Streamlit secrets (contains API keys)
+.streamlit/secrets.toml
+
 # Python
 *.pyc
 *.pyo
