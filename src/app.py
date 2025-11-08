@@ -1,5 +1,6 @@
 # app.py
 import logging
+import re
 from datetime import datetime
 
 import numpy as np
@@ -29,6 +30,91 @@ st.set_page_config(
 
 # Initialize database
 init_database()
+
+
+def process_options(options: list) -> list:
+    """
+    Process and clean options before sending to AI.
+
+    Args:
+        options: List of raw option strings
+
+    Returns:
+        List of processed options with formatting, deduplication, and capitalization
+    """
+    if not options:
+        return []
+
+    processed = []
+    seen = set()
+
+    # Simple emoji mapping for common options (fast lookup, no API calls)
+    emoji_map = {
+        'job': '💼', 'work': '💼', 'career': '💼',
+        'home': '🏠', 'house': '🏠', 'move': '🚚',
+        'car': '🚗', 'vehicle': '🚗', 'tesla': '🚗',
+        'travel': '✈️', 'trip': '✈️', 'vacation': '✈️',
+        'food': '🍔', 'restaurant': '🍔', 'eat': '🍔',
+        'health': '💪', 'fitness': '💪', 'gym': '💪',
+        'money': '💰', 'cost': '💰', 'price': '💰',
+        'time': '⏰', 'schedule': '⏰',
+        'family': '👨‍👩‍👧‍👦', 'kids': '👨‍👩‍👧‍👦',
+        'education': '📚', 'school': '📚', 'learn': '📚',
+        'tech': '💻', 'computer': '💻', 'software': '💻',
+    }
+
+    for option in options:
+        # 1. Check formatting - remove extra whitespace, normalize
+        option = option.strip()
+        # Remove multiple spaces
+        option = re.sub(r'\s+', ' ', option)
+        # Remove leading/trailing punctuation that shouldn't be there
+        option = option.strip('.,;:!?')
+
+        # Skip empty options
+        if not option:
+            continue
+
+        # 2. Deduplicate - case-insensitive comparison
+        option_lower = option.lower()
+        if option_lower in seen:
+            continue
+        seen.add(option_lower)
+
+        # 3. Capitalize text - smart title case
+        # Split into words and capitalize each word properly
+        words = option.split()
+        capitalized_words = []
+        for word in words:
+            # Handle special cases (all caps acronyms, etc.)
+            if word.isupper() and len(word) > 1:
+                # Keep acronyms as-is if they're all caps
+                capitalized_words.append(word)
+            elif word.lower() in ['ai', 'api', 'ui', 'ux', 'id', 'url']:
+                # Keep common acronyms uppercase
+                capitalized_words.append(word.upper())
+            else:
+                # Normal title case
+                capitalized_words.append(word.capitalize())
+
+        option = ' '.join(capitalized_words)
+
+        # 4. Optional: Add emoji if found (fast lookup, skip if not found)
+        # Check if any keyword in the option matches emoji map
+        option_lower_words = option_lower.split()
+        emoji_found = None
+        for word in option_lower_words:
+            if word in emoji_map:
+                emoji_found = emoji_map[word]
+                break
+
+        # Add emoji prefix if found
+        if emoji_found:
+            option = f"{emoji_found} {option}"
+
+        processed.append(option)
+
+    return processed
 
 
 # === AI RECOMMENDATION (OpenAI GPT / xAI Grok) ===
@@ -488,10 +574,24 @@ with st.container(border=True):
     else:
         st.session_state["use_ai"] = False
 
-options = options_text.strip().splitlines()
-options = [o.strip() for o in options if o.strip()]
+# Parse and process options
+raw_options = options_text.strip().splitlines()
+raw_options = [o.strip() for o in raw_options if o.strip()]
+
+if not raw_options:
+    st.stop()
+
+# Process options: format, deduplicate, capitalize
+options = process_options(raw_options)
+
+# Show processing info if options were changed
+if len(options) != len(raw_options):
+    removed_count = len(raw_options) - len(options)
+    if removed_count > 0:
+        st.info(f"ℹ️ Processed {len(raw_options)} options: removed {removed_count} duplicate(s), formatted and capitalized.")
 
 if not options:
+    st.error("⚠️ No valid options after processing. Please enter at least one option.")
     st.stop()
 
 # === STEP 2: Criteria + Weights ===
