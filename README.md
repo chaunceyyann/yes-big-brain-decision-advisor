@@ -60,6 +60,45 @@ The app will open in your browser at `http://localhost:8501`
 5. View the ranked results and get an AI recommendation
 6. Save your decision to review later
 
+## Decision-Making Flow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    USER INPUTS                               │
+├──────────────────────────────────────────────────────────────┤
+│  • Decision Question                                         │
+│  • Options (e.g., Option A, Option B, Option C)              │
+│  • Criteria & Weights (e.g., Cost 40%, Comfort 35%, Time 25%)│
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  SCORING PROCESS                             │
+├──────────────────────────────────────────────────────────────┤
+│  For each Option × Criterion:                                │
+│  • Rate performance (1-10 scale)                             │
+│  • Calculate weighted score = Score × Weight                 │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    CALCULATION                               │
+├──────────────────────────────────────────────────────────────┤
+│  • Sum weighted scores for each option                       │
+│  • Calculate Total Score = Σ(Weighted Scores)                │
+│  • Rank options by Total Score (highest = best)              │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     OUTPUT                                   │
+├──────────────────────────────────────────────────────────────┤
+│  • Visual ranking chart (bar graph)                          │
+│  • AI recommendation (confident, human-sounding)             │
+│  • Save to decisions.json for future reference               │
+└──────────────────────────────────────────────────────────────┘
+```
+
 ## Decision Storage
 
 All decisions are saved locally in `decisions.json` in the project root. You can:
