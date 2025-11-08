@@ -9,6 +9,9 @@ decisions.json
 decisions.db
 decisions.db-journal
 
+# Wiki (not used - GitHub wiki requires paid plan)
+wiki/
+
 # Python
 *.pyc
 *.pyo
