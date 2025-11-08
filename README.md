@@ -2,6 +2,8 @@
 
 **The AI that turns 'maybe' into 'hell yes' — with math, visuals, and zero fluff.**
 
+![PR Checks](https://github.com/chaunceyyann/yes-big-brain-decision-advisor/actions/workflows/pr-checks.yaml/badge.svg)
+
 ## Goal
 
 Yes? is a decision-making tool that helps you make better choices by combining structured analysis with AI-powered recommendations. Instead of relying on gut feelings, Yes? helps you:
