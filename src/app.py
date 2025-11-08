@@ -38,24 +38,28 @@ st.markdown(
 
 # Welcome section for new users
 if "has_seen_welcome" not in st.session_state:
-    with st.expander("👋 Welcome! How does this work?", expanded=True):
-        st.markdown(
-            """
-        **Yes? helps you make better decisions in 4 simple steps:**
+    st.session_state["has_seen_welcome"] = False
 
-        1. **Define your decision** - What are you trying to decide?
-        2. **List your options** - What are your choices?
-        3. **Set criteria & weights** - What matters most? (e.g., Cost, Quality, Time)
-        4. **Score each option** - Rate how well each option performs (1-10 scale)
-
-        The app will calculate weighted scores, rank your options, and give you an AI recommendation!
-
-        💡 **Tip:** Be honest with your scores and adjust weights to match your true priorities.
+with st.expander(
+    "👋 Welcome! How does this work?", expanded=not st.session_state["has_seen_welcome"]
+):
+    st.markdown(
         """
-        )
-        if st.button("Got it! Let's start", key="dismiss_welcome"):
-            st.session_state["has_seen_welcome"] = True
-            st.rerun()
+    **Yes? helps you make better decisions in 4 simple steps:**
+
+    1. **Define your decision** - What are you trying to decide?
+    2. **List your options** - What are your choices?
+    3. **Set criteria & weights** - What matters most? (e.g., Cost, Quality, Time)
+    4. **Score each option** - Rate how well each option performs (1-10 scale)
+
+    The app will calculate weighted scores, rank your options, and give you an AI recommendation!
+
+    💡 **Tip:** Be honest with your scores and adjust weights to match your true priorities.
+    """
+    )
+    if st.button("Got it! Let's start", key="dismiss_welcome"):
+        st.session_state["has_seen_welcome"] = True
+        st.rerun()
 
 # Sidebar: Mock Login + History
 with st.sidebar:
