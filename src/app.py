@@ -36,6 +36,27 @@ st.markdown(
     "*The AI that turns 'maybe' into 'hell yes' — with math, visuals, and zero fluff.*"
 )
 
+# Welcome section for new users
+if "has_seen_welcome" not in st.session_state:
+    with st.expander("👋 Welcome! How does this work?", expanded=True):
+        st.markdown(
+            """
+        **Yes? helps you make better decisions in 4 simple steps:**
+
+        1. **Define your decision** - What are you trying to decide?
+        2. **List your options** - What are your choices?
+        3. **Set criteria & weights** - What matters most? (e.g., Cost, Quality, Time)
+        4. **Score each option** - Rate how well each option performs (1-10 scale)
+
+        The app will calculate weighted scores, rank your options, and give you an AI recommendation!
+
+        💡 **Tip:** Be honest with your scores and adjust weights to match your true priorities.
+        """
+        )
+        if st.button("Got it! Let's start", key="dismiss_welcome"):
+            st.session_state["has_seen_welcome"] = True
+            st.rerun()
+
 # Sidebar: Mock Login + History
 with st.sidebar:
     st.header("👤 Account")
@@ -105,8 +126,11 @@ if (
     st.markdown("---")
 
 # === STEP 1: Decision & Options ===
+st.markdown("---")
+st.markdown("### 📝 Step 1: Define Your Decision & Options")
+
 # New Decision button at the top
-col_btn, _ = st.columns([1, 4])
+col_btn, col_info = st.columns([1, 4])
 with col_btn:
     if st.button("🧠 New Decision", help="Clear all fields and start fresh"):
         # Clear all session state related to loading
@@ -115,6 +139,10 @@ with col_btn:
                 del st.session_state[key]
         st.success("Fresh start!")
         st.rerun()
+with col_info:
+    st.caption(
+        "💡 Start by entering your decision question and listing all possible options"
+    )
 
 # Check if we need to load a decision
 if "load_decision" in st.session_state:
@@ -143,14 +171,20 @@ with col1:
         "What are you deciding?",
         value=loaded_decision,
         placeholder="e.g., Quit job? Move cities? Buy Tesla?",
+        help="Enter a clear question about what you're trying to decide",
     )
+    if not decision:
+        st.info("👆 Enter your decision question above to get started")
 with col2:
     options_text = st.text_area(
         "List your options (one per line):",
         value=loaded_options,
         placeholder="Stay at current job\nSwitch to remote role\nStart freelance",
         height=120,
+        help="Enter all possible options, one per line. Be comprehensive but realistic.",
     )
+    if not options_text.strip():
+        st.info("👆 List all your options above, one per line")
 
 options = options_text.strip().splitlines()
 options = [o.strip() for o in options if o.strip()]
@@ -159,7 +193,12 @@ if not options:
     st.stop()
 
 # === STEP 2: Criteria + Weights ===
-st.subheader("⚖️ Criteria & Weights")
+st.markdown("---")
+st.markdown("### ⚖️ Step 2: Set Your Criteria & Weights")
+st.caption(
+    "💡 Criteria are the factors that matter to you. Weights determine how important each criterion is (they'll be normalized automatically)."
+)
+
 cols = st.columns(3)
 params, weights = [], []
 
@@ -178,9 +217,19 @@ for i in range(3):
             value=default_value,
             key=f"p{i}",
             placeholder="e.g., Income",
+            help=f"Name the {i+1}{'st' if i==0 else 'nd' if i==1 else 'rd'} factor that matters to you",
         )
-        weight = st.slider(f"Weight", 0.0, 1.0, default_weight, 0.05, key=f"w{i}")
+        weight = st.slider(
+            f"Weight",
+            0.0,
+            1.0,
+            default_weight,
+            0.05,
+            key=f"w{i}",
+            help=f"How important is this criterion? (0 = not important, 1 = very important)",
+        )
         if param:
+            st.caption(f"Current weight: {weight*100:.0f}%")
             params.append(param)
             weights.append(weight)
 
@@ -189,17 +238,26 @@ total_weight = sum(weights)
 weights = [w / total_weight if total_weight > 0 else 0 for w in weights]
 
 # === STEP 3: Score Options ===
-st.subheader("🎯 Score Each Option")
+st.markdown("---")
+st.markdown("### 🎯 Step 3: Score Each Option")
+st.caption(
+    "💡 Rate how well each option performs on each criterion using a 1-10 scale (1 = poor, 5 = average, 10 = excellent)"
+)
+
 data = {"Option": options}
 for param in params:
     data[f"{param} (1-10)"] = []
     data[f"{param} (Weighted)"] = []
 
 # Organize scoring by option, with columns matching number of criteria
+if len(params) == 0:
+    st.warning("⚠️ Please set at least one criterion in Step 2 to continue")
+    st.stop()
+
 for opt in options:
-    st.markdown(f"**{opt}**")
-    # Create columns based on number of criteria
-    if len(params) > 0:
+    with st.container():
+        st.markdown(f"#### {opt}")
+        # Create columns based on number of criteria
         score_cols = st.columns(len(params))
         for j, param in enumerate(params):
             with score_cols[j]:
@@ -219,17 +277,23 @@ for opt in options:
                     key=f"score_{opt}_{j}",
                     help=f"Rate {opt} on {param} (1-10)",
                 )
+                # Show weighted score preview
                 weighted = score * weights[j]
+                st.caption(f"Weighted: {weighted:.2f}")
                 data[f"{param} (1-10)"].append(score)
                 data[f"{param} (Weighted)"].append(round(weighted, 2))
-    st.markdown("---")
+        st.markdown("---")
 
 df = pd.DataFrame(data)
 df["Total Score"] = df.filter(like="(Weighted)").sum(axis=1)
 df = df.sort_values("Total Score", ascending=False).reset_index(drop=True)
 
 # === VISUAL RANKING ===
-st.subheader("🏆 Ranked Results")
+st.markdown("---")
+st.markdown("### 🏆 Step 4: View Your Results")
+st.caption(
+    "💡 Options are ranked by total weighted score. The higher the score, the better the option based on your criteria and weights."
+)
 fig = px.bar(
     df,
     x="Total Score",
@@ -247,13 +311,23 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # === AI RECOMMENDATION ===
-if st.button("🤖 Get AI Verdict", type="primary"):
+st.markdown("---")
+st.markdown("### 🤖 Get AI Recommendation")
+st.caption("💡 Get a confident, human-sounding recommendation based on your scores")
+
+if st.button("🤖 Get AI Verdict", type="primary", use_container_width=True):
     with st.spinner("Yes? is thinking..."):
         verdict = get_ai_recommendation(decision, options, df, params, weights)
-        st.success(verdict)
+        st.info(verdict)
 
 # === SAVE DECISION ===
-if st.button("💾 Save This Decision"):
+st.markdown("---")
+st.markdown("### 💾 Save Your Decision")
+st.caption(
+    "💡 Save this decision to review later. You can load it from the sidebar anytime."
+)
+
+if st.button("💾 Save This Decision", use_container_width=True):
     timestamp = datetime.now().strftime("%b %d, %Y")
     entry = f"{decision} → **{df.iloc[0]['Option']}** ({df.iloc[0]['Total Score']:.1f})"
 
