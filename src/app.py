@@ -57,9 +57,9 @@ with st.expander(
     💡 **Tip:** Be honest with your scores and adjust weights to match your true priorities.
     """
     )
-    # Button to toggle welcome section - collapses/expands
+    # Button to collapse welcome section
     if st.button("Got it! Let's start", key="dismiss_welcome"):
-        st.session_state["has_seen_welcome"] = not st.session_state["has_seen_welcome"]
+        st.session_state["has_seen_welcome"] = True
         st.rerun()
 
 # Sidebar: Mock Login + History
