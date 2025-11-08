@@ -21,13 +21,25 @@
      - Check that `requirements.txt` is in the root directory
      - Verify the file format is correct (one package per line)
 
-2. **Configure Environment Variables** (if needed)
+2. **Configure API Keys** (for AI recommendations)
    - In Streamlit Cloud dashboard, go to "Settings" → "Secrets"
-   - Add any required secrets (e.g., API keys for future AI integration):
+   - Add API keys in TOML format (at least one is recommended):
+     ```toml
+     # OpenAI GPT API (optional)
+     [openai]
+     api_key = "sk-your-actual-openai-api-key-here"
+
+     # xAI Grok API (optional)
+     [xai]
+     api_key = "xai-your-actual-api-key-here"
      ```
-     OPENAI_API_KEY=your_key_here
-     XAI_API_KEY=your_key_here
-     ```
+   - **Getting API keys:**
+     - **OpenAI GPT:** Sign up at [platform.openai.com](https://platform.openai.com), go to API keys section
+     - **xAI Grok:** Sign up at [x.ai](https://x.ai), go to your account settings, generate an API key
+   - **Note:**
+     - If both APIs are configured, you can choose which one to use in the app
+     - If only one is configured, it will be used automatically
+     - If no API keys are configured, the app will use a fallback mock recommendation
 
 3. **Deploy**
    - Click "Deploy" - Streamlit Cloud will automatically deploy your app
@@ -38,6 +50,29 @@
 - **Development**: Deploy from `dev` branch
 - **Production**: Deploy from `main` branch (via release branches)
 
+### Local Development Setup
+
+1. **Create secrets file:**
+   ```bash
+   cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+   ```
+
+2. **Add your API keys:**
+   Edit `.streamlit/secrets.toml` and replace the placeholder keys with your actual API keys:
+   ```toml
+   # OpenAI GPT API (optional)
+   [openai]
+   api_key = "sk-your-actual-openai-api-key-here"
+
+   # xAI Grok API (optional)
+   [xai]
+   api_key = "xai-your-actual-api-key-here"
+   ```
+   - At least one API key should be configured for AI recommendations
+   - If both are configured, you can choose which one to use in the app
+
+3. **The secrets file is gitignored** - it won't be committed to the repository.
+
 ### File Structure
 
 ```
@@ -47,7 +82,9 @@ yes-big-brain-decision-advisor/
 ├── requirements.txt         # Python dependencies
 ├── streamlit.toml          # Streamlit configuration
 └── .streamlit/
-    └── secrets.toml        # Local secrets (not committed)
+    ├── secrets.toml        # Local secrets (not committed)
+    ├── secrets.toml.example # Example secrets file
+    └── README.md           # Secrets setup instructions
 ```
 
 ### Notes

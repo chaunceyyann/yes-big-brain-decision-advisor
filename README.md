@@ -95,16 +95,23 @@ The app will open in your browser at `http://localhost:8501`
 ├──────────────────────────────────────────────────────────────┤
 │  • Visual ranking chart (bar graph)                          │
 │  • AI recommendation (confident, human-sounding)             │
-│  • Save to decisions.json for future reference               │
+│  • Save to database for future reference                    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ## Decision Storage
 
-All decisions are saved locally in `decisions.json` in the project root. You can:
+All decisions are saved in a SQLite database (`decisions.db`) with user authentication. You can:
+- Create an account to save decisions permanently
+- Save decisions temporarily without logging in (lost on refresh)
 - View past decisions in the sidebar
 - Click the 📋 button to load a previous decision
-- All data persists across sessions
+- All data persists across sessions when logged in
+
+**Note:** If you have old decisions in `decisions.json`, you can migrate them using the migration script:
+```bash
+python scripts/migrate_json_to_db.py
+```
 
 ## Future Enhancements
 
