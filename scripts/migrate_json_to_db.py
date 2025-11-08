@@ -11,8 +11,7 @@ from pathlib import Path
 # Add src directory to path to import database module
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from database import (create_user, get_db_connection, init_database,
-                      save_decision)
+from database import create_user, get_db_connection, init_database, save_decision
 
 # Database and JSON file paths
 DB_FILE = "decisions.db"

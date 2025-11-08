@@ -14,10 +14,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-from api_clients import (call_openai_gpt, call_xai_grok,
-                         get_ai_criteria_and_weights_suggestions,
-                         get_ai_criteria_suggestions, get_ai_score_suggestions,
-                         get_ai_weight_suggestions, get_available_apis)
+from api_clients import (
+    call_openai_gpt,
+    call_xai_grok,
+    get_ai_criteria_and_weights_suggestions,
+    get_ai_criteria_suggestions,
+    get_ai_score_suggestions,
+    get_ai_weight_suggestions,
+    get_available_apis,
+)
 from database import authenticate_user, create_user
 from database import delete_decision as db_delete_decision
 from database import get_decision_by_id, get_user_decisions, init_database
@@ -50,26 +55,46 @@ def process_options(options: list) -> list:
 
     # Simple emoji mapping for common options (fast lookup, no API calls)
     emoji_map = {
-        'job': '💼', 'work': '💼', 'career': '💼',
-        'home': '🏠', 'house': '🏠', 'move': '🚚',
-        'car': '🚗', 'vehicle': '🚗', 'tesla': '🚗',
-        'travel': '✈️', 'trip': '✈️', 'vacation': '✈️',
-        'food': '🍔', 'restaurant': '🍔', 'eat': '🍔',
-        'health': '💪', 'fitness': '💪', 'gym': '💪',
-        'money': '💰', 'cost': '💰', 'price': '💰',
-        'time': '⏰', 'schedule': '⏰',
-        'family': '👨‍👩‍👧‍👦', 'kids': '👨‍👩‍👧‍👦',
-        'education': '📚', 'school': '📚', 'learn': '📚',
-        'tech': '💻', 'computer': '💻', 'software': '💻',
+        "job": "💼",
+        "work": "💼",
+        "career": "💼",
+        "home": "🏠",
+        "house": "🏠",
+        "move": "🚚",
+        "car": "🚗",
+        "vehicle": "🚗",
+        "tesla": "🚗",
+        "travel": "✈️",
+        "trip": "✈️",
+        "vacation": "✈️",
+        "food": "🍔",
+        "restaurant": "🍔",
+        "eat": "🍔",
+        "health": "💪",
+        "fitness": "💪",
+        "gym": "💪",
+        "money": "💰",
+        "cost": "💰",
+        "price": "💰",
+        "time": "⏰",
+        "schedule": "⏰",
+        "family": "👨‍👩‍👧‍👦",
+        "kids": "👨‍👩‍👧‍👦",
+        "education": "📚",
+        "school": "📚",
+        "learn": "📚",
+        "tech": "💻",
+        "computer": "💻",
+        "software": "💻",
     }
 
     for option in options:
         # 1. Check formatting - remove extra whitespace, normalize
         option = option.strip()
         # Remove multiple spaces
-        option = re.sub(r'\s+', ' ', option)
+        option = re.sub(r"\s+", " ", option)
         # Remove leading/trailing punctuation that shouldn't be there
-        option = option.strip('.,;:!?')
+        option = option.strip(".,;:!?")
 
         # Skip empty options
         if not option:
@@ -90,14 +115,14 @@ def process_options(options: list) -> list:
             if word.isupper() and len(word) > 1:
                 # Keep acronyms as-is if they're all caps
                 capitalized_words.append(word)
-            elif word.lower() in ['ai', 'api', 'ui', 'ux', 'id', 'url']:
+            elif word.lower() in ["ai", "api", "ui", "ux", "id", "url"]:
                 # Keep common acronyms uppercase
                 capitalized_words.append(word.upper())
             else:
                 # Normal title case
                 capitalized_words.append(word.capitalize())
 
-        option = ' '.join(capitalized_words)
+        option = " ".join(capitalized_words)
 
         # 4. Optional: Add emoji if found (fast lookup, skip if not found)
         # Check if any keyword in the option matches emoji map
@@ -588,7 +613,9 @@ options = process_options(raw_options)
 if len(options) != len(raw_options):
     removed_count = len(raw_options) - len(options)
     if removed_count > 0:
-        st.info(f"ℹ️ Processed {len(raw_options)} options: removed {removed_count} duplicate(s), formatted and capitalized.")
+        st.info(
+            f"ℹ️ Processed {len(raw_options)} options: removed {removed_count} duplicate(s), formatted and capitalized."
+        )
 
 if not options:
     st.error("⚠️ No valid options after processing. Please enter at least one option.")
