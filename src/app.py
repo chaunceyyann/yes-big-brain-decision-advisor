@@ -75,20 +75,16 @@ with st.sidebar:
             if all_decisions:
                 for idx, decision_data in enumerate(all_decisions[-5:]):
                     entry = f"{decision_data['decision']} → **{decision_data['winner']}** ({decision_data['winner_score']:.1f})"
-                    # Create a button next to each decision
-                    col1, col2 = st.columns([1.5, 8.5])
-                    with col1:
-                        if st.button(
-                            "📋",
-                            key=f"load_{idx}_{len(all_decisions)}",
-                            help=f"Load: {entry}",
-                            use_container_width=True,
-                        ):
-                            # Store the decision to load in session state
-                            st.session_state["decision_to_load"] = decision_data
-                            st.session_state["show_load_confirm"] = True
-                    with col2:
-                        st.write(f"• {entry}")
+                    # Create a button that covers both emoji and text
+                    if st.button(
+                        f"📋 {entry}",
+                        key=f"load_{idx}_{len(all_decisions)}",
+                        help=f"Load this decision",
+                        use_container_width=True,
+                    ):
+                        # Store the decision to load in session state
+                        st.session_state["decision_to_load"] = decision_data
+                        st.session_state["show_load_confirm"] = True
             else:
                 st.write("• No decisions saved yet")
         except (json.JSONDecodeError, KeyError) as e:
