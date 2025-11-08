@@ -57,10 +57,11 @@ with st.expander(
     💡 **Tip:** Be honest with your scores and adjust weights to match your true priorities.
     """
     )
-    # Button to collapse welcome section
-    if st.button("Got it! Let's start", key="dismiss_welcome"):
-        st.session_state["has_seen_welcome"] = True
-        st.rerun()
+    # Button to collapse welcome section - only show if not dismissed yet
+    if not st.session_state["has_seen_welcome"]:
+        if st.button("Got it! Let's start", key="dismiss_welcome"):
+            st.session_state["has_seen_welcome"] = True
+            st.rerun()
 
 # Sidebar: Mock Login + History
 with st.sidebar:
@@ -85,7 +86,7 @@ with st.sidebar:
                         f"📋 {entry}",
                         key=f"load_{idx}_{len(all_decisions)}",
                         help=f"Load this decision",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         # Store the decision to load in session state
                         st.session_state["decision_to_load"] = decision_data
@@ -158,6 +159,25 @@ if "load_decision" in st.session_state:
         loaded_scores[option] = {}
         for param in loaded_criteria:
             loaded_scores[option][param] = result.get(f"{param} (1-10)", 5)
+
+    # Set session state values for all widgets to prevent rerun issues
+    # Set criteria text inputs
+    for i, criterion in enumerate(loaded_criteria):
+        st.session_state[f"p{i}"] = criterion
+    # Set weight sliders
+    for i, weight in enumerate(loaded_weights):
+        st.session_state[f"w{i}"] = float(weight)
+    # Set score sliders
+    for j, option in enumerate(load_data["options"]):
+        for i, param in enumerate(loaded_criteria):
+            score = loaded_scores.get(option, {}).get(param, 5)
+            st.session_state[f"score_{option}_{i}"] = (
+                int(score) if isinstance(score, (int, float)) else 5
+            )
+
+    # Also set num_criteria to match loaded criteria count
+    st.session_state["num_criteria"] = len(loaded_criteria)
+
     del st.session_state["load_decision"]
 else:
     loaded_decision = ""
@@ -241,30 +261,54 @@ for i in range(num_criteria):
         cols = st.columns(cols_per_row)
 
     with cols[col_idx]:
-        default_value = (
-            loaded_criteria[i]
-            if i < len(loaded_criteria)
-            else (default_criteria[i] if i < len(default_criteria) else "")
-        )
-        default_weight = (
-            loaded_weights[i] if i < len(loaded_weights) else (1.0 / num_criteria)
-        )
-        param = st.text_input(
-            f"Criteria {i+1}",
-            value=default_value,
-            key=f"p{i}",
-            placeholder="e.g., Income",
-            help=f"Name the {i+1}{'st' if i==0 else 'nd' if i==1 else 'rd'} factor that matters to you",
-        )
-        weight = st.slider(
-            f"Weight",
-            0.0,
-            1.0,
-            default_weight,
-            0.05,
-            key=f"w{i}",
-            help=f"How important is this criterion? (0 = not important, 1 = very important)",
-        )
+        # Always use session state value if it exists, otherwise use default
+        if f"p{i}" in st.session_state:
+            # Use session state value explicitly
+            param = st.text_input(
+                f"Criteria {i+1}",
+                value=st.session_state[f"p{i}"],
+                key=f"p{i}",
+                placeholder="e.g., Income",
+                help=f"Name the {i+1}{'st' if i==0 else 'nd' if i==1 else 'rd'} factor that matters to you",
+            )
+        else:
+            default_value = (
+                loaded_criteria[i]
+                if i < len(loaded_criteria)
+                else (default_criteria[i] if i < len(default_criteria) else "")
+            )
+            param = st.text_input(
+                f"Criteria {i+1}",
+                value=default_value,
+                key=f"p{i}",
+                placeholder="e.g., Income",
+                help=f"Name the {i+1}{'st' if i==0 else 'nd' if i==1 else 'rd'} factor that matters to you",
+            )
+
+        if f"w{i}" in st.session_state:
+            # Use session state value explicitly
+            weight = st.slider(
+                f"Weight",
+                0.0,
+                1.0,
+                value=st.session_state[f"w{i}"],
+                step=0.05,
+                key=f"w{i}",
+                help=f"How important is this criterion? (0 = not important, 1 = very important)",
+            )
+        else:
+            default_weight = (
+                loaded_weights[i] if i < len(loaded_weights) else (1.0 / num_criteria)
+            )
+            weight = st.slider(
+                f"Weight",
+                0.0,
+                1.0,
+                default_weight,
+                0.05,
+                key=f"w{i}",
+                help=f"How important is this criterion? (0 = not important, 1 = very important)",
+            )
         if param:
             st.caption(f"Current weight: {weight*100:.0f}%")
             params.append(param)
@@ -298,22 +342,34 @@ for opt in options:
         score_cols = st.columns(len(params))
         for j, param in enumerate(params):
             with score_cols[j]:
-                # Get loaded score if available
-                default_score = (
-                    loaded_scores.get(opt, {}).get(param, 5) if loaded_scores else 5
-                )
-                score = st.slider(
-                    param,
-                    1,
-                    10,
-                    (
-                        int(default_score)
-                        if isinstance(default_score, (int, float))
-                        else 5
-                    ),
-                    key=f"score_{opt}_{j}",
-                    help=f"Rate {opt} on {param} (1-10)",
-                )
+                # Always use session state value if it exists, otherwise use default
+                score_key = f"score_{opt}_{j}"
+                if score_key in st.session_state:
+                    # Use session state value explicitly
+                    score = st.slider(
+                        param,
+                        1,
+                        10,
+                        value=st.session_state[score_key],
+                        key=score_key,
+                        help=f"Rate {opt} on {param} (1-10)",
+                    )
+                else:
+                    default_score = (
+                        loaded_scores.get(opt, {}).get(param, 5) if loaded_scores else 5
+                    )
+                    score = st.slider(
+                        param,
+                        1,
+                        10,
+                        (
+                            int(default_score)
+                            if isinstance(default_score, (int, float))
+                            else 5
+                        ),
+                        key=score_key,
+                        help=f"Rate {opt} on {param} (1-10)",
+                    )
                 # Show weighted score preview
                 weighted = score * weights[j]
                 st.caption(f"Weighted: {weighted:.2f}")
@@ -345,14 +401,14 @@ fig.update_traces(texttemplate="%{x:.1f}", textposition="outside")
 fig.update_layout(
     yaxis={"categoryorder": "total ascending"}, height=300 + len(options) * 50
 )
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 # === AI RECOMMENDATION ===
 st.markdown("---")
 st.markdown("### 🤖 Get AI Recommendation")
 st.caption("💡 Get a confident, human-sounding recommendation based on your scores")
 
-if st.button("🤖 Get AI Verdict", type="primary", use_container_width=True):
+if st.button("🤖 Get AI Verdict", type="primary", width="stretch"):
     with st.spinner("Yes? is thinking..."):
         verdict = get_ai_recommendation(decision, options, df, params, weights)
         st.info(verdict)
@@ -364,7 +420,7 @@ st.caption(
     "💡 Save this decision to review later. You can load it from the sidebar anytime."
 )
 
-if st.button("💾 Save This Decision", use_container_width=True):
+if st.button("💾 Save This Decision", width="stretch"):
     timestamp = datetime.now().strftime("%b %d, %Y")
     entry = f"{decision} → **{df.iloc[0]['Option']}** ({df.iloc[0]['Total Score']:.1f})"
 
