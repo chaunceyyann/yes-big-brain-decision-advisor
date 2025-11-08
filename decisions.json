@@ -1,0 +1,350 @@
+[
+  {
+    "timestamp": "Nov 07, 2025",
+    "datetime": "2025-11-07T20:08:00.048116",
+    "decision": "2026",
+    "options": [
+      "Cybertruck",
+      "Lucid Gravity",
+      "Model Y",
+      "Waterfront",
+      "Newport",
+      "Edison"
+    ],
+    "criteria": [
+      "Cost",
+      "Comfortability",
+      "Time"
+    ],
+    "weights": [
+      0.33333333333333337,
+      0.33333333333333337,
+      0.33333333333333337
+    ],
+    "winner": "Cybertruck",
+    "winner_score": 5.01,
+    "full_results": [
+      {
+        "Option": "Cybertruck",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Lucid Gravity",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Model Y",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Waterfront",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Newport",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Edison",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      }
+    ]
+  },
+  {
+    "timestamp": "Nov 07, 2025",
+    "datetime": "2025-11-07T20:09:11.205510",
+    "decision": "2026 L",
+    "options": [
+      "Cybertruck",
+      "Lucid Gravity",
+      "Model Y",
+      "Waterfront",
+      "Newport",
+      "Edison"
+    ],
+    "criteria": [
+      "Cost",
+      "Comfortability",
+      "Time"
+    ],
+    "weights": [
+      0.33333333333333337,
+      0.33333333333333337,
+      0.33333333333333337
+    ],
+    "winner": "Cybertruck",
+    "winner_score": 5.01,
+    "full_results": [
+      {
+        "Option": "Cybertruck",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Lucid Gravity",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Model Y",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Waterfront",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Newport",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Edison",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      }
+    ]
+  },
+  {
+    "timestamp": "Nov 07, 2025",
+    "datetime": "2025-11-07T20:09:17.439005",
+    "decision": "2026 A",
+    "options": [
+      "Cybertruck",
+      "Lucid Gravity",
+      "Model Y",
+      "Waterfront",
+      "Newport",
+      "Edison"
+    ],
+    "criteria": [
+      "Cost",
+      "Comfortability",
+      "Time"
+    ],
+    "weights": [
+      0.33333333333333337,
+      0.33333333333333337,
+      0.33333333333333337
+    ],
+    "winner": "Cybertruck",
+    "winner_score": 5.01,
+    "full_results": [
+      {
+        "Option": "Cybertruck",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Lucid Gravity",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Model Y",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Waterfront",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Newport",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      },
+      {
+        "Option": "Edison",
+        "Cost (1-10)": 5,
+        "Cost (Weighted)": 1.67,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 1.67,
+        "Time (1-10)": 5,
+        "Time (Weighted)": 1.67,
+        "Total Score": 5.01
+      }
+    ]
+  },
+  {
+    "timestamp": "Nov 07, 2025",
+    "datetime": "2025-11-07T20:11:10.891573",
+    "decision": "2026",
+    "options": [
+      "Cybertruck",
+      "Lucid Gravity",
+      "Model Y",
+      "Waterfront",
+      "Newport",
+      "Edison"
+    ],
+    "criteria": [
+      "Cost",
+      "Comfortability",
+      "Motivation"
+    ],
+    "weights": [
+      0.38095238095238093,
+      0.19047619047619047,
+      0.42857142857142855
+    ],
+    "winner": "Model Y",
+    "winner_score": 7.38,
+    "full_results": [
+      {
+        "Option": "Model Y",
+        "Cost (1-10)": 8,
+        "Cost (Weighted)": 3.05,
+        "Comfortability (1-10)": 7,
+        "Comfortability (Weighted)": 1.33,
+        "Motivation (1-10)": 7,
+        "Motivation (Weighted)": 3.0,
+        "Total Score": 7.38
+      },
+      {
+        "Option": "Edison",
+        "Cost (1-10)": 8,
+        "Cost (Weighted)": 3.05,
+        "Comfortability (1-10)": 7,
+        "Comfortability (Weighted)": 1.33,
+        "Motivation (1-10)": 7,
+        "Motivation (Weighted)": 3.0,
+        "Total Score": 7.38
+      },
+      {
+        "Option": "Waterfront",
+        "Cost (1-10)": 6,
+        "Cost (Weighted)": 2.29,
+        "Comfortability (1-10)": 9,
+        "Comfortability (Weighted)": 1.71,
+        "Motivation (1-10)": 4,
+        "Motivation (Weighted)": 1.71,
+        "Total Score": 5.71
+      },
+      {
+        "Option": "Newport",
+        "Cost (1-10)": 6,
+        "Cost (Weighted)": 2.29,
+        "Comfortability (1-10)": 9,
+        "Comfortability (Weighted)": 1.71,
+        "Motivation (1-10)": 4,
+        "Motivation (Weighted)": 1.71,
+        "Total Score": 5.71
+      },
+      {
+        "Option": "Cybertruck",
+        "Cost (1-10)": 3,
+        "Cost (Weighted)": 1.14,
+        "Comfortability (1-10)": 5,
+        "Comfortability (Weighted)": 0.95,
+        "Motivation (1-10)": 8,
+        "Motivation (Weighted)": 3.43,
+        "Total Score": 5.52
+      },
+      {
+        "Option": "Lucid Gravity",
+        "Cost (1-10)": 2,
+        "Cost (Weighted)": 0.76,
+        "Comfortability (1-10)": 8,
+        "Comfortability (Weighted)": 1.52,
+        "Motivation (1-10)": 7,
+        "Motivation (Weighted)": 3.0,
+        "Total Score": 5.28
+      }
+    ]
+  }
+]
