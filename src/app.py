@@ -14,7 +14,8 @@ logging.basicConfig(
 )
 
 from api_clients import (call_openai_gpt, call_xai_grok,
-                         get_ai_criteria_suggestions,
+                         get_ai_criteria_and_weights_suggestions,
+                         get_ai_criteria_suggestions, get_ai_score_suggestions,
                          get_ai_weight_suggestions, get_available_apis)
 from database import authenticate_user, create_user
 from database import delete_decision as db_delete_decision
@@ -389,8 +390,13 @@ with st.container(border=True):
     col_btn, col_info = st.columns([1, 4])
     with col_btn:
         if st.button("🧠 New Decision", help="Clear all fields and start fresh"):
-            # Clear all session state related to loading
-            for key in ["load_decision", "decision_to_load", "show_load_confirm"]:
+            # Clear all session state related to loading and AI generation
+            for key in [
+                "load_decision",
+                "decision_to_load",
+                "show_load_confirm",
+                "ai_generated_for",
+            ]:
                 if key in st.session_state:
                     del st.session_state[key]
             st.success("Fresh start!")
@@ -461,6 +467,27 @@ with st.container(border=True):
         if not options_text.strip():
             st.info("👆 List all your options above, one per line")
 
+    # Check available APIs for AI suggestions
+    try:
+        available_apis = get_available_apis(st.secrets)
+        has_any_api = available_apis.get("openai", False) or available_apis.get(
+            "xai", False
+        )
+    except Exception:
+        has_any_api = False
+
+    # AI checkbox - only show if API is available
+    if has_any_api:
+        use_ai = st.checkbox(
+            "🤖 Use AI to generate criteria, weights, and scores",
+            value=st.session_state.get("use_ai", True),  # Default to True
+            help="Let AI automatically suggest criteria, weights, and initial scores based on your decision and options",
+            key="use_ai_checkbox",
+        )
+        st.session_state["use_ai"] = use_ai
+    else:
+        st.session_state["use_ai"] = False
+
 options = options_text.strip().splitlines()
 options = [o.strip() for o in options if o.strip()]
 
@@ -474,27 +501,30 @@ with st.container(border=True):
         "💡 Criteria are the factors that matter to you. Weights determine how important each criterion is (they'll be normalized automatically)."
     )
 
-    # Check available APIs for AI suggestions
-    try:
-        available_apis = get_available_apis(st.secrets)
-        has_openai = available_apis.get("openai", False)
-        has_xai = available_apis.get("xai", False)
-        has_any_api = has_openai or has_xai
-    except Exception:
-        has_any_api = False
-        has_openai = False
-        has_xai = False
+    # Auto-generate criteria, weights, and scores if AI checkbox is enabled
+    # Only generate if not loading from a past decision
+    if (
+        st.session_state.get("use_ai", False)
+        and decision
+        and options
+        and not loaded_criteria  # Don't generate if loading from past decision
+    ):
+        # Check if we've already generated for this decision/options combination
+        decision_hash = f"{decision}_{','.join(options)}"
+        if st.session_state.get("ai_generated_for") != decision_hash:
+            # Check available APIs
+            try:
+                available_apis = get_available_apis(st.secrets)
+                has_openai = available_apis.get("openai", False)
+                has_xai = available_apis.get("xai", False)
+                has_any_api = has_openai or has_xai
+            except Exception:
+                has_any_api = False
+                has_openai = False
+                has_xai = False
 
-    # AI Suggestions section
-    if decision and options and has_any_api:
-        st.markdown("#### 🤖 AI Suggestions")
-        col_ai1, col_ai2 = st.columns(2)
-        with col_ai1:
-            if st.button(
-                "✨ AI Suggest Criteria",
-                help="Let AI suggest relevant criteria for your decision",
-            ):
-                with st.spinner("AI is thinking about your decision..."):
+            if has_any_api:
+                with st.spinner("🤖 AI is generating criteria, weights, and scores..."):
                     try:
                         # Determine which API to use
                         api_type = "openai" if has_openai else "xai"
@@ -504,73 +534,168 @@ with st.container(border=True):
                             else st.secrets.get("xai", {}).get("api_key")
                         )
 
-                        suggestions = get_ai_criteria_suggestions(
+                        # Step 1: Generate criteria and weights together (saves tokens)
+                        criteria_suggestions = None
+                        weight_suggestions = None
+
+                        criteria_and_weights = get_ai_criteria_and_weights_suggestions(
                             decision, options, api_key, api_type
                         )
-                        if suggestions:
+
+                        if criteria_and_weights:
+                            criteria_suggestions, weight_suggestions = (
+                                criteria_and_weights
+                            )
+
                             # Update criteria count and set suggested criteria
-                            st.session_state["num_criteria"] = len(suggestions)
-                            for i, criterion in enumerate(suggestions):
+                            st.session_state["num_criteria"] = len(criteria_suggestions)
+                            for i, criterion in enumerate(criteria_suggestions):
                                 st.session_state[f"p{i}"] = criterion
-                            st.success(f"✨ AI suggested: {', '.join(suggestions)}")
+
+                            # Update weights based on suggestions
+                            if weight_suggestions:
+                                for i, criterion in enumerate(criteria_suggestions):
+                                    if criterion in weight_suggestions:
+                                        st.session_state[f"w{i}"] = weight_suggestions[
+                                            criterion
+                                        ]
+                        else:
+                            # Fallback: try separate calls if combined fails
+                            criteria_suggestions = get_ai_criteria_suggestions(
+                                decision, options, api_key, api_type
+                            )
+
+                            if criteria_suggestions:
+                                # Update criteria count and set suggested criteria
+                                st.session_state["num_criteria"] = len(
+                                    criteria_suggestions
+                                )
+                                for i, criterion in enumerate(criteria_suggestions):
+                                    st.session_state[f"p{i}"] = criterion
+
+                                # Step 2: Generate weights separately
+                                weight_suggestions = get_ai_weight_suggestions(
+                                    decision,
+                                    options,
+                                    criteria_suggestions,
+                                    api_key,
+                                    api_type,
+                                )
+
+                                if weight_suggestions:
+                                    # Update weights based on suggestions
+                                    for i, criterion in enumerate(criteria_suggestions):
+                                        if criterion in weight_suggestions:
+                                            st.session_state[f"w{i}"] = (
+                                                weight_suggestions[criterion]
+                                            )
+
+                        if criteria_suggestions:
+
+                            # Step 3: Generate scores
+                            try:
+                                score_suggestions = get_ai_score_suggestions(
+                                    decision,
+                                    options,
+                                    criteria_suggestions,
+                                    api_key,
+                                    api_type,
+                                )
+
+                                if score_suggestions:
+                                    # Update scores based on suggestions
+                                    for opt_idx, option in enumerate(options):
+                                        if option in score_suggestions:
+                                            for param_idx, criterion in enumerate(
+                                                criteria_suggestions
+                                            ):
+                                                if (
+                                                    criterion
+                                                    in score_suggestions[option]
+                                                ):
+                                                    score = score_suggestions[option][
+                                                        criterion
+                                                    ]
+                                                    st.session_state[
+                                                        f"score_{opt_idx}_{param_idx}"
+                                                    ] = score
+                            except Exception as e:
+                                error_msg = str(e)
+                                if "timeout" in error_msg.lower():
+                                    st.warning(
+                                        "⚠️ Score generation timed out. The request took too long. You can manually score the options or try again."
+                                    )
+                                else:
+                                    st.warning(
+                                        f"⚠️ Score generation failed: {error_msg}. You can manually score the options."
+                                    )
+                                logging.error(
+                                    f"Score generation error: {error_msg}",
+                                    exc_info=True,
+                                )
+                                score_suggestions = None
+
+                            # Show debug info
+                            with st.expander(
+                                "🔍 Debug: View Prompts & API Responses", expanded=False
+                            ):
+                                st.markdown("**API Configuration:**")
+                                st.write(f"- API Type: {api_type}")
+                                st.write(f"- Has OpenAI: {has_openai}")
+                                st.write(f"- Has xAI: {has_xai}")
+                                st.markdown("---")
+
+                                st.markdown(
+                                    "**Step 1: Criteria & Weight Generation (Combined)**"
+                                )
+                                st.write(f"- Criteria: {criteria_suggestions}")
+                                st.write(f"- Weights: {weight_suggestions}")
+                                if not weight_suggestions:
+                                    st.error(
+                                        "⚠️ No weights generated. Check console logs for details."
+                                    )
+                                st.markdown("---")
+
+                                st.markdown("**Step 2: Score Generation**")
+                                st.write(f"- Result: {score_suggestions}")
+                                if not score_suggestions:
+                                    st.error(
+                                        "⚠️ No scores generated. Check console logs for details."
+                                    )
+                                st.markdown("---")
+
+                                st.caption(
+                                    "💡 Check the browser console or Streamlit logs for detailed API responses and parsing info."
+                                )
+
+                            # Mark as generated for this decision/options combination
+                            st.session_state["ai_generated_for"] = decision_hash
+
+                            # Show summary
+                            if (
+                                criteria_suggestions
+                                and weight_suggestions
+                                and score_suggestions
+                            ):
+                                st.success(
+                                    "✨ AI generated criteria, weights, and scores!"
+                                )
+                            elif criteria_suggestions:
+                                st.warning(
+                                    "⚠️ Criteria generated, but weights or scores failed. Check debug info above."
+                                )
                             st.rerun()
                         else:
                             st.error(
                                 "⚠️ Could not generate AI suggestions. Please try again."
                             )
                     except Exception as e:
-                        st.error(f"⚠️ Error getting AI suggestions: {str(e)}")
+                        st.error(f"⚠️ Error generating AI suggestions: {str(e)}")
                         logging.error(
-                            f"AI criteria suggestion error: {str(e)}", exc_info=True
+                            f"AI auto-generation error: {str(e)}", exc_info=True
                         )
-
-        with col_ai2:
-            if st.button(
-                "⚖️ AI Suggest Weights",
-                help="Let AI suggest relative importance weights",
-            ):
-                # Collect current criteria from session state
-                current_criteria = []
-                num_criteria = st.session_state.get("num_criteria", 3)
-                for i in range(num_criteria):
-                    criterion = st.session_state.get(f"p{i}", "")
-                    if criterion:
-                        current_criteria.append(criterion)
-
-                if not current_criteria:
-                    st.warning("⚠️ Please set criteria first")
-                else:
-                    with st.spinner("AI is analyzing importance..."):
-                        try:
-                            # Determine which API to use
-                            api_type = "openai" if has_openai else "xai"
-                            api_key = (
-                                st.secrets.get("openai", {}).get("api_key")
-                                if api_type == "openai"
-                                else st.secrets.get("xai", {}).get("api_key")
-                            )
-
-                            suggestions = get_ai_weight_suggestions(
-                                decision, options, current_criteria, api_key, api_type
-                            )
-                            if suggestions:
-                                # Update weights based on suggestions
-                                for i, criterion in enumerate(current_criteria):
-                                    if criterion in suggestions:
-                                        st.session_state[f"w{i}"] = suggestions[
-                                            criterion
-                                        ]
-                                st.success("✨ AI suggested weights applied!")
-                                st.rerun()
-                            else:
-                                st.error(
-                                    "⚠️ Could not generate AI weight suggestions. Please try again."
-                                )
-                        except Exception as e:
-                            st.error(f"⚠️ Error getting AI weight suggestions: {str(e)}")
-                            logging.error(
-                                f"AI weight suggestion error: {str(e)}", exc_info=True
-                            )
+            else:
+                st.warning("⚠️ No API keys configured. AI suggestions unavailable.")
 
     # Initialize criteria count in session state
     if "num_criteria" not in st.session_state:
