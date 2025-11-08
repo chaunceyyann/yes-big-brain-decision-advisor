@@ -195,19 +195,55 @@ st.caption(
     "💡 Criteria are the factors that matter to you. Weights determine how important each criterion is (they'll be normalized automatically)."
 )
 
-cols = st.columns(3)
-params, weights = [], []
+# Initialize criteria count in session state
+if "num_criteria" not in st.session_state:
+    # Use loaded criteria count if available, otherwise default to 3
+    st.session_state["num_criteria"] = len(loaded_criteria) if loaded_criteria else 3
 
 # Default common criteria
 default_criteria = ["Cost", "Comfortability", "Time"]
 
+# Add/Remove criteria buttons
+col_add, col_remove, _ = st.columns([1, 1, 4])
+with col_add:
+    if st.button("➕ Add Criterion", help="Add another criterion"):
+        st.session_state["num_criteria"] += 1
+        st.rerun()
+with col_remove:
+    if st.button(
+        "➖ Remove Criterion",
+        help="Remove the last criterion",
+        disabled=st.session_state["num_criteria"] <= 1,
+    ):
+        if st.session_state["num_criteria"] > 1:
+            st.session_state["num_criteria"] -= 1
+            st.rerun()
+
+# Determine number of columns (max 3 per row)
+num_criteria = st.session_state["num_criteria"]
+cols_per_row = min(3, num_criteria)
+num_rows = (num_criteria + cols_per_row - 1) // cols_per_row
+
+params, weights = [], []
+
 # Use loaded criteria if available, otherwise use defaults
-for i in range(3):
-    with cols[i % 3]:
+for i in range(num_criteria):
+    row = i // cols_per_row
+    col_idx = i % cols_per_row
+
+    # Create columns for this row if needed
+    if col_idx == 0:
+        cols = st.columns(cols_per_row)
+
+    with cols[col_idx]:
         default_value = (
-            loaded_criteria[i] if i < len(loaded_criteria) else default_criteria[i]
+            loaded_criteria[i]
+            if i < len(loaded_criteria)
+            else (default_criteria[i] if i < len(default_criteria) else "")
         )
-        default_weight = loaded_weights[i] if i < len(loaded_weights) else 0.33
+        default_weight = (
+            loaded_weights[i] if i < len(loaded_weights) else (1.0 / num_criteria)
+        )
         param = st.text_input(
             f"Criteria {i+1}",
             value=default_value,
