@@ -15,6 +15,11 @@
    - Select your GitHub repository: `chaunceyyann/yes-big-brain-decision-advisor`
    - Choose branch: `dev` (for development deployment)
    - Set main file path: `src/app.py`
+   - **Important**: Ensure `requirements.txt` is in the root directory (it should be automatically detected)
+   - If dependencies aren't installing, try:
+     - Redeploy the app (click "Reboot app" in Streamlit Cloud dashboard)
+     - Check that `requirements.txt` is in the root directory
+     - Verify the file format is correct (one package per line)
 
 2. **Configure Environment Variables** (if needed)
    - In Streamlit Cloud dashboard, go to "Settings" → "Secrets"
