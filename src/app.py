@@ -142,8 +142,80 @@ def process_options(options: list) -> list:
     return processed
 
 
+# === AI INITIAL DECISION (Question + Options Only) ===
+def get_ai_initial_decision(decision, options, custom_prompt=None, preferred_api=None):
+    """
+    Get AI's initial decision based on just question and options, before any scoring.
+
+    Args:
+        decision: Decision question
+        options: List of options
+        custom_prompt: Optional custom prompt/context from user
+        preferred_api: Preferred API to use ('openai', 'xai', or None for auto-select)
+
+    Returns:
+        AI initial decision string
+    """
+    prompt = f"""
+Decision: {decision}
+Options: {', '.join(options)}
+"""
+    if custom_prompt:
+        prompt += f"\nAdditional context: {custom_prompt}"
+
+    prompt += "\n\nBased on just the decision question and options, which option would you recommend and why? Give a confident, concise recommendation in 2-3 sentences."
+
+    system_prompt = "You are a confident, helpful decision advisor. Give an initial recommendation based on the decision question and options alone, without any structured analysis."
+
+    # Check available APIs
+    try:
+        available_apis = get_available_apis(st.secrets)
+    except Exception:
+        available_apis = {"openai": False, "xai": False}
+
+    # Determine which API to use
+    api_to_use = None
+    if preferred_api and available_apis.get(preferred_api, False):
+        api_to_use = preferred_api
+    elif available_apis.get("openai", False):
+        api_to_use = "openai"
+    elif available_apis.get("xai", False):
+        api_to_use = "xai"
+
+    recommendation = None
+
+    # Try OpenAI GPT first (if selected or auto-selected)
+    if api_to_use == "openai":
+        try:
+            openai_key = st.secrets.get("openai", {}).get("api_key")
+            recommendation = call_openai_gpt(
+                openai_key, prompt, system_prompt, max_tokens=200
+            )
+            if recommendation:
+                return f"**Yes? (GPT) initial take:** {recommendation}"
+        except Exception as e:
+            logging.error(f"OpenAI initial decision error: {str(e)}", exc_info=True)
+
+    # Try xAI Grok (if selected or OpenAI failed)
+    if api_to_use == "xai" or (api_to_use == "openai" and not recommendation):
+        try:
+            xai_key = st.secrets.get("xai", {}).get("api_key")
+            recommendation = call_xai_grok(
+                xai_key, prompt, system_prompt, max_tokens=200
+            )
+            if recommendation:
+                return f"**Yes? (Grok) initial take:** {recommendation}"
+        except Exception as e:
+            logging.error(f"xAI initial decision error: {str(e)}", exc_info=True)
+
+    # Fallback
+    return f"**Yes? initial take:** Based on your decision '{decision}', I'd lean toward **{options[0] if options else 'the first option'}**. But let's see what the numbers say after you score everything!"
+
+
 # === AI RECOMMENDATION (OpenAI GPT / xAI Grok) ===
-def get_ai_recommendation(decision, options, df, params, weights, preferred_api=None):
+def get_ai_recommendation(
+    decision, options, df, params, weights, custom_prompt=None, preferred_api=None
+):
     """
     Get AI recommendation using OpenAI GPT or xAI Grok API, with fallback to mock.
 
@@ -164,9 +236,14 @@ def get_ai_recommendation(decision, options, df, params, weights, preferred_api=
     Options: {', '.join(options)}
     Criteria: {', '.join([f'{p} ({w*100:.0f}%)' for p, w in zip(params, weights)])}
     Winner: {top['Option']} with score {top['Total Score']:.2f}
+"""
+    if custom_prompt:
+        prompt += f"\nAdditional context: {custom_prompt}"
 
-    Give a confident, concise, human-sounding recommendation in 2-3 sentences.
-    """
+    prompt += (
+        "\n\nGive a confident, concise, human-sounding recommendation in 2-3 sentences."
+    )
+
     system_prompt = "You are a confident, helpful decision advisor. Give concise, actionable recommendations in 2-3 sentences."
 
     # Check available APIs
@@ -648,6 +725,34 @@ with st.container(border=True):
         st.session_state["use_ai"] = False
         st.session_state["preferred_ai_api"] = None
 
+    # Action buttons at the bottom of Step 1
+    if decision and options_text.strip():
+        col_ai, col_next = st.columns([1, 1])
+
+        with col_ai:
+            # Button to trigger initial AI take
+            if has_any_api and st.session_state.get("use_ai", False):
+                if st.button(
+                    "💭 Get AI's Initial Take",
+                    type="secondary",
+                    width="stretch",
+                    help="Get AI's gut feeling based on just your question and options",
+                ):
+                    # Trigger initial AI decision generation (will be processed after options are parsed)
+                    st.session_state["trigger_initial_decision"] = True
+                    st.rerun()
+
+        with col_next:
+            # Next step button
+            if st.button(
+                "➡️ Continue to Step 2",
+                type="primary",
+                width="stretch",
+                help="Proceed to set criteria and weights",
+            ):
+                st.session_state["step1_complete"] = True
+                st.rerun()
+
 # Parse and process options
 raw_options = options_text.strip().splitlines()
 raw_options = [o.strip() for o in raw_options if o.strip()]
@@ -669,6 +774,74 @@ if len(options) != len(raw_options):
 if not options:
     st.error("⚠️ No valid options after processing. Please enter at least one option.")
     st.stop()
+
+# === INITIAL AI DECISION (Step 1.5) ===
+# Show initial AI decision based on just question and options (triggered by button)
+if decision and options:
+    # Check available APIs
+    try:
+        available_apis = get_available_apis(st.secrets)
+        has_openai = available_apis.get("openai", False)
+        has_xai = available_apis.get("xai", False)
+        has_any_api = has_openai or has_xai
+    except Exception:
+        has_any_api = False
+        has_openai = False
+        has_xai = False
+
+    if has_any_api and st.session_state.get("use_ai", False):
+        # Determine which API to use for initial decision
+        preferred_api = None
+        if st.session_state.get("use_xai_ai", False) and has_xai:
+            preferred_api = "xai"
+        elif st.session_state.get("use_openai_ai", False) and has_openai:
+            preferred_api = "openai"
+        elif has_xai:
+            preferred_api = "xai"
+        elif has_openai:
+            preferred_api = "openai"
+
+        # Check if user triggered initial decision
+        decision_hash = f"{decision}_{','.join(options)}"
+        initial_decision_key = f"initial_decision_{decision_hash}"
+
+        # Generate initial decision if button was clicked
+        if st.session_state.get("trigger_initial_decision", False):
+            if initial_decision_key not in st.session_state:
+                with st.spinner("🤖 Getting AI's initial take..."):
+                    try:
+                        # Initial decision doesn't use custom prompt (just question + options)
+                        initial_decision = get_ai_initial_decision(
+                            decision, options, None, preferred_api
+                        )
+                        st.session_state[initial_decision_key] = initial_decision
+                    except Exception as e:
+                        logging.error(
+                            f"Error getting initial decision: {str(e)}", exc_info=True
+                        )
+                        st.session_state[initial_decision_key] = None
+            # Clear trigger
+            if "trigger_initial_decision" in st.session_state:
+                del st.session_state["trigger_initial_decision"]
+
+        # Display initial decision if available
+        if st.session_state.get(initial_decision_key):
+            with st.container(border=True):
+                st.markdown("### 💭 AI's Initial Take")
+                st.caption(
+                    "💡 AI's gut feeling based on just your question and options (before any scoring)"
+                )
+                st.info(st.session_state[initial_decision_key])
+                # Option to regenerate
+                if st.button(
+                    "🔄 Regenerate Initial Take",
+                    key="regenerate_initial",
+                    help="Get a fresh AI take on your decision",
+                ):
+                    # Clear existing decision and trigger regeneration
+                    del st.session_state[initial_decision_key]
+                    st.session_state["trigger_initial_decision"] = True
+                    st.rerun()
 
 # === STEP 2: Criteria + Weights ===
 with st.container(border=True):
@@ -984,8 +1157,8 @@ with st.container(border=True):
                 )
             if param:
                 st.caption(f"Current weight: {weight*100:.0f}%")
-                params.append(param)
-                weights.append(weight)
+            params.append(param)
+            weights.append(weight)
 
     # Normalize weights
     total_weight = sum(weights)
@@ -1051,7 +1224,7 @@ with st.container(border=True):
                     st.caption(f"Weighted: {weighted:.2f}")
                     data[f"{param} (1-10)"].append(score)
                     data[f"{param} (Weighted)"].append(round(weighted, 2))
-            st.markdown("---")
+        st.markdown("---")
 
     df = pd.DataFrame(data)
     df["Total Score"] = df.filter(like="(Weighted)").sum(axis=1)
@@ -1083,6 +1256,15 @@ with st.container(border=True):
 with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
     st.caption(
         "💡 Get additional AI insights (the highest score already shows the best option)"
+    )
+
+    # Custom prompt field for user context
+    custom_prompt = st.text_area(
+        "💬 Additional context (optional):",
+        value=st.session_state.get("custom_ai_prompt", ""),
+        placeholder="e.g., I'm risk-averse, or Consider my budget constraints, or What if I prioritize work-life balance?",
+        help="Add any additional context, constraints, or questions for the AI to consider in the recommendation",
+        key="custom_ai_prompt_input",
     )
 
     # Check available APIs
@@ -1145,12 +1327,94 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
             "⚠️ No API keys configured. Using fallback recommendation. Configure API keys in Streamlit secrets to get real AI recommendations."
         )
 
+    # Get initial decision for comparison
+    decision_hash = f"{decision}_{','.join(options)}"
+    initial_decision_key = f"initial_decision_{decision_hash}"
+    initial_decision = st.session_state.get(initial_decision_key, None)
+
     if st.button("🤖 Get AI Verdict", type="primary", width="stretch"):
+        # Get custom prompt from text area (submitted with button click)
+        custom_prompt_value = custom_prompt.strip() if custom_prompt else None
+        st.session_state["custom_ai_prompt"] = custom_prompt_value
+
         with st.spinner("Yes? is thinking..."):
-            verdict = get_ai_recommendation(
-                decision, options, df, params, weights, preferred_api
+            # Get final recommendation with custom prompt
+            final_verdict = get_ai_recommendation(
+                decision,
+                options,
+                df,
+                params,
+                weights,
+                custom_prompt_value,
+                preferred_api,
             )
-            st.info(verdict)
+
+            # Show final verdict
+            st.info(final_verdict)
+
+            # Show comparison if initial decision exists
+            if initial_decision:
+                st.markdown("---")
+                st.markdown("### 📊 Decision Comparison")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**💭 Initial Take**")
+                    st.info(initial_decision)
+                with col2:
+                    st.markdown("**🎯 Final Verdict**")
+                    st.info(final_verdict)
+
+                # Get AI comparison if both APIs available
+                if has_openai or has_xai:
+                    with st.spinner("🤖 Analyzing differences..."):
+                        try:
+                            comparison_prompt = f"""
+Initial AI Decision: {initial_decision}
+Final AI Decision: {final_verdict}
+Decision Question: {decision}
+Options: {', '.join(options)}
+Top Scored Option: {df.iloc[0]['Option']} (Score: {df.iloc[0]['Total Score']:.2f})
+
+Compare the initial decision with the final decision. Did the structured analysis (criteria, weights, scores) confirm or contradict the initial assessment? What changed and why? Keep it concise (2-3 sentences).
+"""
+                            comparison_system = "You are a decision analysis expert. Compare initial vs final decisions and explain what changed."
+
+                            comparison_api = (
+                                preferred_api
+                                if preferred_api
+                                else ("openai" if has_openai else "xai")
+                            )
+                            comparison_key = (
+                                st.secrets.get(comparison_api, {}).get("api_key")
+                                if comparison_api == "openai"
+                                else st.secrets.get("xai", {}).get("api_key")
+                            )
+
+                            if comparison_api == "openai":
+                                comparison_result = call_openai_gpt(
+                                    comparison_key,
+                                    comparison_prompt,
+                                    comparison_system,
+                                    max_tokens=200,
+                                )
+                            else:
+                                comparison_result = call_xai_grok(
+                                    comparison_key,
+                                    comparison_prompt,
+                                    comparison_system,
+                                    max_tokens=200,
+                                )
+
+                            if comparison_result:
+                                st.markdown("**🔍 Analysis:**")
+                                st.success(comparison_result)
+                        except Exception as e:
+                            logging.error(
+                                f"Error getting comparison: {str(e)}", exc_info=True
+                            )
+                            st.caption(
+                                "💡 Compare the two decisions above to see how structured analysis changed the recommendation."
+                            )
 
 # === SAVE DECISION ===
 with st.container(border=True):
