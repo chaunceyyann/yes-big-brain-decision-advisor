@@ -19,6 +19,7 @@ from api_clients import (
     call_xai_grok,
     get_ai_criteria_and_weights_suggestions,
     get_ai_criteria_suggestions,
+    get_ai_options_suggestions,
     get_ai_score_suggestions,
     get_ai_weight_suggestions,
     get_available_apis,
@@ -574,25 +575,8 @@ if (
 with st.container(border=True):
     st.markdown("### 📝 Step 1: Define Your Decision & Options")
 
-    # New Decision button at the top
-    col_btn, col_info = st.columns([1, 4])
-    with col_btn:
-        if st.button("🧠 New Decision", help="Clear all fields and start fresh"):
-            # Clear all session state related to loading and AI generation
-            for key in [
-                "load_decision",
-                "decision_to_load",
-                "show_load_confirm",
-                "ai_generated_for",
-            ]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.success("Fresh start!")
-            st.rerun()
-    with col_info:
-        st.caption(
-            "💡 Start by entering your decision question and listing all possible options"
-        )
+    if "step1_complete" not in st.session_state:
+        st.session_state["step1_complete"] = False
 
     # Check if we need to load a decision
     if "load_decision" in st.session_state:
@@ -625,6 +609,7 @@ with st.container(border=True):
 
         # Also set num_criteria to match loaded criteria count
         st.session_state["num_criteria"] = len(loaded_criteria)
+        st.session_state["step1_complete"] = True
 
         del st.session_state["load_decision"]
     else:
@@ -634,35 +619,175 @@ with st.container(border=True):
         loaded_weights = []
         loaded_scores = {}
 
+    # Check for AI suggested options in session state
+    ai_suggested_options = st.session_state.get("ai_suggested_options", "")
+    pending_options_update = st.session_state.pop("pending_options_update", None)
+    if pending_options_update is not None:
+        st.session_state["options_text_area"] = pending_options_update
+        ai_suggested_options = pending_options_update
+
+    # Determine initial value for options text area
+    # Priority: loaded_options (from saved decision) > ai_suggested_options > empty
+    initial_options_value = loaded_options if loaded_options else ai_suggested_options
+
+    # Check API availability once for Step 1 actions
+    try:
+        available_apis = get_available_apis(st.secrets)
+    except Exception:
+        available_apis = {"openai": False, "xai": False}
+    has_openai = available_apis.get("openai", False)
+    has_xai = available_apis.get("xai", False)
+    has_any_api = has_openai or has_xai
+
     col1, col2 = st.columns(2)
     with col1:
-        decision = st.text_input(
+        decision = st.text_area(
             "What are you deciding?",
             value=loaded_decision,
             placeholder="e.g., Quit job? Move cities? Buy Tesla?",
             help="Enter a clear question about what you're trying to decide",
+            height=120,
+            key="decision_input",
         )
         if not decision:
-            st.info("👆 Enter your decision question above to get started")
+            st.info("👆 Enter your decision question to start")
+        # Store decision in session state for button access
+        st.session_state["current_decision"] = decision
     with col2:
         options_text = st.text_area(
             "List your options (one per line):",
-            value=loaded_options,
+            value=initial_options_value,
             placeholder="Stay at current job\nSwitch to remote role\nStart freelance",
             height=120,
             help="Enter all possible options, one per line. Be comprehensive but realistic.",
+            key="options_text_area",
         )
         if not options_text.strip():
             st.info("👆 List all your options above, one per line")
 
-    # Check available APIs for AI suggestions
-    try:
-        available_apis = get_available_apis(st.secrets)
-        has_any_api = available_apis.get("openai", False) or available_apis.get(
-            "xai", False
-        )
-    except Exception:
-        has_any_api = False
+    # Buttons at the top
+    col_reset, col_ai_suggest, col_initial_take, col_continue = st.columns(4)
+    with col_reset:
+        if st.button(
+            "🧠 New Decision (reset)",
+            help="Clear all fields and start fresh",
+            use_container_width=True,
+        ):
+            # Clear all session state related to loading and AI generation
+            for key in [
+                "load_decision",
+                "decision_to_load",
+                "show_load_confirm",
+                "ai_generated_for",
+                "ai_suggested_options",
+                "current_decision",
+                "trigger_initial_decision",
+                "ai_final_verdict",
+                "ai_final_verdict_key",
+                "ai_comparison_result",
+                "custom_ai_prompt",
+            ]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.session_state["step1_complete"] = False
+            st.success("Fresh start!")
+            st.rerun()
+    with col_ai_suggest:
+        if st.button(
+            "🤖 AI Suggest Options",
+            help="Use AI to suggest options based on your decision question",
+            use_container_width=True,
+            disabled=not has_any_api,
+        ):
+            # Get decision from session state (set above)
+            current_decision = st.session_state.get("current_decision", "")
+            if not current_decision or not current_decision.strip():
+                st.warning("⚠️ Please enter a decision question first")
+            else:
+                # Determine which API to use
+                preferred_api = None
+
+                # Use preferred API from session state if set, otherwise auto-select
+                if st.session_state.get("preferred_ai_api") and available_apis.get(
+                    st.session_state.get("preferred_ai_api"), False
+                ):
+                    preferred_api = st.session_state.get("preferred_ai_api")
+                elif has_xai:
+                    preferred_api = "xai"
+                elif has_openai:
+                    preferred_api = "openai"
+
+                if preferred_api:
+                    with st.spinner("🤖 AI is suggesting options..."):
+                        try:
+                            api_key = (
+                                st.secrets.get("openai", {}).get("api_key")
+                                if preferred_api == "openai"
+                                else st.secrets.get("xai", {}).get("api_key")
+                            )
+
+                            suggested_options = get_ai_options_suggestions(
+                                current_decision, api_key, preferred_api
+                            )
+
+                            if suggested_options:
+                                # Store suggested options in session state
+                                joined_options = "\n".join(suggested_options)
+                                st.session_state["ai_suggested_options"] = (
+                                    joined_options
+                                )
+                                st.session_state["pending_options_update"] = (
+                                    joined_options
+                                )
+                                st.session_state["trigger_initial_decision"] = True
+                                st.session_state["step1_complete"] = True
+                                st.session_state["use_ai"] = True
+                                st.session_state.pop("ai_generated_for", None)
+                                st.success(
+                                    f"✨ AI suggested {len(suggested_options)} options!"
+                                )
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "⚠️ Could not generate AI suggestions. Please try again."
+                                )
+                        except Exception as e:
+                            st.error(f"⚠️ Error generating AI suggestions: {str(e)}")
+                            logging.error(
+                                f"AI options suggestion error: {str(e)}", exc_info=True
+                            )
+                else:
+                    st.warning("⚠️ No API available for suggestions")
+        if not has_any_api:
+            st.caption("💡 Configure API keys to use AI suggestions")
+
+    with col_initial_take:
+        if st.button(
+            "💭 AI Initial Take",
+            help="Get AI's gut feeling based on just your question and options",
+            use_container_width=True,
+            disabled=(not has_any_api) or (not options_text.strip()),
+        ):
+            if not decision or not decision.strip() or not options_text.strip():
+                st.warning("⚠️ Please enter your decision and options first")
+            else:
+                st.session_state["trigger_initial_decision"] = True
+                st.rerun()
+
+    with col_continue:
+        if st.button(
+            "➡️ Continue to Step 2",
+            help="Proceed to set criteria and weights",
+            use_container_width=True,
+            disabled=not options_text.strip(),
+        ):
+            if not decision or not decision.strip():
+                st.warning("⚠️ Please enter your decision first")
+            elif not options_text.strip():
+                st.warning("⚠️ Please enter at least one option before continuing")
+            else:
+                st.session_state["step1_complete"] = True
+                st.rerun()
 
     # AI checkbox - only show if API is available
     if has_any_api:
@@ -724,34 +849,6 @@ with st.container(border=True):
     else:
         st.session_state["use_ai"] = False
         st.session_state["preferred_ai_api"] = None
-
-    # Action buttons at the bottom of Step 1
-    if decision and options_text.strip():
-        col_ai, col_next = st.columns([1, 1])
-
-        with col_ai:
-            # Button to trigger initial AI take
-            if has_any_api and st.session_state.get("use_ai", False):
-                if st.button(
-                    "💭 Get AI's Initial Take",
-                    type="secondary",
-                    width="stretch",
-                    help="Get AI's gut feeling based on just your question and options",
-                ):
-                    # Trigger initial AI decision generation (will be processed after options are parsed)
-                    st.session_state["trigger_initial_decision"] = True
-                    st.rerun()
-
-        with col_next:
-            # Next step button
-            if st.button(
-                "➡️ Continue to Step 2",
-                type="primary",
-                width="stretch",
-                help="Proceed to set criteria and weights",
-            ):
-                st.session_state["step1_complete"] = True
-                st.rerun()
 
 # Parse and process options
 raw_options = options_text.strip().splitlines()
@@ -842,6 +939,13 @@ if decision and options:
                     del st.session_state[initial_decision_key]
                     st.session_state["trigger_initial_decision"] = True
                     st.rerun()
+
+if not st.session_state.get("step1_complete", False):
+    st.stop()
+
+# Initialize params and weights to satisfy linters (will be populated in Step 2)
+params = []
+weights = []
 
 # === STEP 2: Criteria + Weights ===
 with st.container(border=True):
@@ -1252,10 +1356,10 @@ with st.container(border=True):
     )
     st.plotly_chart(fig, width="stretch")
 
-# === AI RECOMMENDATION (Optional) ===
-with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
+# === AI VERDICT & INSIGHTS ===
+with st.expander("🤖 AI Verdict & Insights", expanded=False):
     st.caption(
-        "💡 Get additional AI insights (the highest score already shows the best option)"
+        "💡 Let AI summarize your results, add context, and compare with the initial take."
     )
 
     # Custom prompt field for user context
@@ -1332,6 +1436,16 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
     initial_decision_key = f"initial_decision_{decision_hash}"
     initial_decision = st.session_state.get(initial_decision_key, None)
 
+    # Clear stored verdict if it belongs to a different decision/options set
+    stored_verdict_key = st.session_state.get("ai_final_verdict_key")
+    if stored_verdict_key and stored_verdict_key != decision_hash:
+        st.session_state.pop("ai_final_verdict", None)
+        st.session_state.pop("ai_final_verdict_key", None)
+        st.session_state.pop("ai_comparison_result", None)
+
+    stored_final_verdict = st.session_state.get("ai_final_verdict")
+    stored_comparison = st.session_state.get("ai_comparison_result")
+
     if st.button("🤖 Get AI Verdict", type="primary", width="stretch"):
         # Get custom prompt from text area (submitted with button click)
         custom_prompt_value = custom_prompt.strip() if custom_prompt else None
@@ -1350,20 +1464,11 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
             )
 
             # Show final verdict
-            st.info(final_verdict)
+            st.session_state["ai_final_verdict"] = final_verdict
+            st.session_state["ai_final_verdict_key"] = decision_hash
 
             # Show comparison if initial decision exists
             if initial_decision:
-                st.markdown("---")
-                st.markdown("### 📊 Decision Comparison")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**💭 Initial Take**")
-                    st.info(initial_decision)
-                with col2:
-                    st.markdown("**🎯 Final Verdict**")
-                    st.info(final_verdict)
-
                 # Get AI comparison if both APIs available
                 if has_openai or has_xai:
                     with st.spinner("🤖 Analyzing differences..."):
@@ -1407,14 +1512,47 @@ Compare the initial decision with the final decision. Did the structured analysi
 
                             if comparison_result:
                                 st.markdown("**🔍 Analysis:**")
-                                st.success(comparison_result)
+                                st.session_state["ai_comparison_result"] = (
+                                    comparison_result
+                                )
+                            else:
+                                st.session_state["ai_comparison_result"] = None
                         except Exception as e:
                             logging.error(
                                 f"Error getting comparison: {str(e)}", exc_info=True
                             )
-                            st.caption(
-                                "💡 Compare the two decisions above to see how structured analysis changed the recommendation."
-                            )
+                            st.session_state["ai_comparison_result"] = None
+                else:
+                    st.session_state["ai_comparison_result"] = None
+            else:
+                st.session_state["ai_comparison_result"] = None
+
+            stored_final_verdict = st.session_state.get("ai_final_verdict")
+            stored_comparison = st.session_state.get("ai_comparison_result")
+
+    # Display stored results (if any)
+    if stored_final_verdict:
+        st.markdown("### 🎯 AI Verdict")
+        st.info(stored_final_verdict)
+
+        if initial_decision:
+            st.markdown("---")
+            st.markdown("### 📊 Decision Comparison")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**💭 Initial Take**")
+                st.info(initial_decision)
+            with col2:
+                st.markdown("**🎯 Final Verdict**")
+                st.info(stored_final_verdict)
+
+            if stored_comparison:
+                st.markdown("**🔍 Analysis:**")
+                st.success(stored_comparison)
+            else:
+                st.caption(
+                    "💡 Compare the two decisions above to see how structured analysis changed the recommendation."
+                )
 
 # === SAVE DECISION ===
 with st.container(border=True):

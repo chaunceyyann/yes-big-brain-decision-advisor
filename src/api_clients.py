@@ -210,6 +210,86 @@ def get_available_apis(secrets: Dict[str, Any]) -> Dict[str, bool]:
     return available
 
 
+def get_ai_options_suggestions(
+    decision: str, api_key: str, api_type: str = "openai"
+) -> Optional[list]:
+    """
+    Get AI suggestions for options based on decision question.
+
+    Args:
+        decision: Decision question
+        api_key: API key (OpenAI or xAI)
+        api_type: Type of API ('openai' or 'xai')
+
+    Returns:
+        List of suggested options or None if error
+    """
+    prompt = f"""Given this decision question:
+
+Decision: {decision}
+
+Suggest 3-8 realistic options (choices) that someone might consider for this decision.
+
+IMPORTANT: Return ONLY a comma-separated list of options, one per line, nothing else.
+
+Example:
+Stay at current job
+Switch to remote role
+Start freelance
+Take a sabbatical
+
+Do not include any explanation, just the list of options, one per line."""
+
+    system_prompt = "You are a decision analysis expert. Provide realistic, relevant options for decision-making."
+
+    logger.info(f"[OPTIONS] Prompt: {prompt}")
+    logger.info(f"[OPTIONS] Decision: {decision}")
+
+    try:
+        if api_type == "openai":
+            result = call_openai_gpt(api_key, prompt, system_prompt, max_tokens=200)
+        else:
+            result = call_xai_grok(api_key, prompt, system_prompt, max_tokens=200)
+
+        logger.info(f"[OPTIONS] Raw API response: {result}")
+
+        if result:
+            # Clean the result - remove any markdown formatting or extra text
+            result = result.strip()
+            # Remove markdown code blocks if present
+            if result.startswith("```"):
+                lines = result.split("\n")
+                result = "\n".join(
+                    [l for l in lines if not l.strip().startswith("```")]
+                )
+
+            # Parse options - split by newline or comma
+            options = []
+            for line in result.split("\n"):
+                line = line.strip()
+                if line:
+                    # If line contains commas, split by comma
+                    if "," in line:
+                        options.extend(
+                            [opt.strip() for opt in line.split(",") if opt.strip()]
+                        )
+                    else:
+                        options.append(line)
+
+            # Also try comma-separated if no newlines
+            if not options:
+                options = [opt.strip() for opt in result.split(",") if opt.strip()]
+
+            options = options[:8]  # Limit to 8 options
+            logger.info(f"[OPTIONS] Parsed options: {options}")
+            return options if options else None
+        logger.warning("[OPTIONS] No result from API")
+        return None
+    except Exception as e:
+        logger.error(f"Error getting AI options suggestions: {str(e)}", exc_info=True)
+        return None
+
+
 def get_ai_criteria_suggestions(
     decision: str, options: list, api_key: str, api_type: str = "openai"
 ) -> Optional[list]:
