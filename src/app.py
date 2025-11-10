@@ -17,8 +17,11 @@ logging.basicConfig(
 from api_clients import (
     call_openai_gpt,
     call_xai_grok,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_XAI_MODEL,
     get_ai_criteria_and_weights_suggestions,
     get_ai_criteria_suggestions,
+    get_ai_options_suggestions,
     get_ai_score_suggestions,
     get_ai_weight_suggestions,
     get_available_apis,
@@ -142,8 +145,148 @@ def process_options(options: list) -> list:
     return processed
 
 
+OPENAI_MODEL_OPTIONS = [
+    {"id": "gpt-4o-mini", "label": "GPT-4o mini (fast & cost-efficient)"},
+    {"id": "gpt-4o", "label": "GPT-4o (balanced quality)"},
+    {"id": "gpt-4.1", "label": "GPT-4.1 (latest model)"},
+    {"id": "gpt-3.5-turbo", "label": "GPT-3.5 Turbo (legacy)"},
+]
+
+XAI_MODEL_OPTIONS = [
+    {"id": "grok-4", "label": "Grok-4 (best quality)"},
+    {"id": "grok-3", "label": "Grok-3 (faster)"},
+]
+
+
+def get_model_display(model_id: str, options: list[dict]) -> str:
+    for option in options:
+        if option["id"] == model_id:
+            return option["label"]
+    return model_id
+
+
+def get_model_index(model_id: str, options: list[dict], fallback_id: str) -> int:
+    for idx, option in enumerate(options):
+        if option["id"] == model_id:
+            return idx
+    for idx, option in enumerate(options):
+        if option["id"] == fallback_id:
+            return idx
+    return 0
+
+
+# Ensure defaults from API client constants always appear in option lists
+if DEFAULT_OPENAI_MODEL not in [opt["id"] for opt in OPENAI_MODEL_OPTIONS]:
+    OPENAI_MODEL_OPTIONS.append(
+        {"id": DEFAULT_OPENAI_MODEL, "label": DEFAULT_OPENAI_MODEL}
+    )
+
+if DEFAULT_XAI_MODEL not in [opt["id"] for opt in XAI_MODEL_OPTIONS]:
+    XAI_MODEL_OPTIONS.append({"id": DEFAULT_XAI_MODEL, "label": DEFAULT_XAI_MODEL})
+
+
+# === AI INITIAL DECISION (Question + Options Only) ===
+def get_ai_initial_decision(
+    decision,
+    options,
+    custom_prompt=None,
+    preferred_api=None,
+    preferred_model=None,
+):
+    """
+    Get AI's initial decision based on just question and options, before any scoring.
+
+    Args:
+        decision: Decision question
+        options: List of options
+        custom_prompt: Optional custom prompt/context from user
+        preferred_api: Preferred API to use ('openai', 'xai', or None for auto-select)
+        preferred_model: Preferred model to use when an API is selected
+
+    Returns:
+        AI initial decision string
+    """
+    prompt = f"""
+Decision: {decision}
+Options: {', '.join(options)}
+"""
+    if custom_prompt:
+        prompt += f"\nAdditional context: {custom_prompt}"
+
+    prompt += "\n\nBased on just the decision question and options, which option would you recommend and why? Give a confident, concise recommendation in 2-3 sentences."
+
+    system_prompt = "You are a confident, helpful decision advisor. Give an initial recommendation based on the decision question and options alone, without any structured analysis."
+
+    # Check available APIs
+    try:
+        available_apis = get_available_apis(st.secrets)
+    except Exception:
+        available_apis = {"openai": False, "xai": False}
+
+    # Determine which API to use
+    api_to_use = None
+    if preferred_api and available_apis.get(preferred_api, False):
+        api_to_use = preferred_api
+    elif available_apis.get("openai", False):
+        api_to_use = "openai"
+    elif available_apis.get("xai", False):
+        api_to_use = "xai"
+
+    recommendation = None
+
+    # Try OpenAI GPT first (if selected or auto-selected)
+    if api_to_use == "openai":
+        try:
+            openai_key = st.secrets.get("openai", {}).get("api_key")
+            openai_model = preferred_model or st.session_state.get(
+                "openai_model", DEFAULT_OPENAI_MODEL
+            )
+            recommendation = call_openai_gpt(
+                openai_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+                max_tokens=200,
+            )
+            if recommendation:
+                return f"**Yes? (GPT) initial take:** {recommendation}"
+        except Exception as e:
+            logging.error(f"OpenAI initial decision error: {str(e)}", exc_info=True)
+
+    # Try xAI Grok (if selected or OpenAI failed)
+    if api_to_use == "xai" or (api_to_use == "openai" and not recommendation):
+        try:
+            xai_key = st.secrets.get("xai", {}).get("api_key")
+            xai_model = preferred_model or st.session_state.get(
+                "xai_model", DEFAULT_XAI_MODEL
+            )
+            recommendation = call_xai_grok(
+                xai_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+                max_tokens=200,
+            )
+            if recommendation:
+                return f"**Yes? (Grok) initial take:** {recommendation}"
+        except Exception as e:
+            logging.error(f"xAI initial decision error: {str(e)}", exc_info=True)
+
+    # Fallback
+    return f"**Yes? initial take:** Based on your decision '{decision}', I'd lean toward **{options[0] if options else 'the first option'}**. But let's see what the numbers say after you score everything!"
+
+
 # === AI RECOMMENDATION (OpenAI GPT / xAI Grok) ===
-def get_ai_recommendation(decision, options, df, params, weights, preferred_api=None):
+def get_ai_recommendation(
+    decision,
+    options,
+    df,
+    params,
+    weights,
+    custom_prompt=None,
+    preferred_api=None,
+    preferred_model=None,
+):
     """
     Get AI recommendation using OpenAI GPT or xAI Grok API, with fallback to mock.
 
@@ -154,6 +297,7 @@ def get_ai_recommendation(decision, options, df, params, weights, preferred_api=
         params: List of criteria
         weights: List of weights
         preferred_api: Preferred API to use ('openai', 'xai', or None for auto-select)
+        preferred_model: Preferred model to use when an API is selected
 
     Returns:
         AI recommendation string
@@ -164,9 +308,14 @@ def get_ai_recommendation(decision, options, df, params, weights, preferred_api=
     Options: {', '.join(options)}
     Criteria: {', '.join([f'{p} ({w*100:.0f}%)' for p, w in zip(params, weights)])}
     Winner: {top['Option']} with score {top['Total Score']:.2f}
+"""
+    if custom_prompt:
+        prompt += f"\nAdditional context: {custom_prompt}"
 
-    Give a confident, concise, human-sounding recommendation in 2-3 sentences.
-    """
+    prompt += (
+        "\n\nGive a confident, concise, human-sounding recommendation in 2-3 sentences."
+    )
+
     system_prompt = "You are a confident, helpful decision advisor. Give concise, actionable recommendations in 2-3 sentences."
 
     # Check available APIs
@@ -193,7 +342,15 @@ def get_ai_recommendation(decision, options, df, params, weights, preferred_api=
             # Local: reads from .streamlit/secrets.toml
             # Cloud: reads from Streamlit Cloud dashboard secrets
             openai_key = st.secrets.get("openai", {}).get("api_key")
-            recommendation = call_openai_gpt(openai_key, prompt, system_prompt)
+            openai_model = preferred_model or st.session_state.get(
+                "openai_model", DEFAULT_OPENAI_MODEL
+            )
+            recommendation = call_openai_gpt(
+                openai_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+            )
             if recommendation:
                 return f"**Yes? (GPT) says:** {recommendation}"
             else:
@@ -210,7 +367,15 @@ def get_ai_recommendation(decision, options, df, params, weights, preferred_api=
             # Local: reads from .streamlit/secrets.toml
             # Cloud: reads from Streamlit Cloud dashboard secrets
             xai_key = st.secrets.get("xai", {}).get("api_key")
-            recommendation = call_xai_grok(xai_key, prompt, system_prompt)
+            xai_model = preferred_model or st.session_state.get(
+                "xai_model", DEFAULT_XAI_MODEL
+            )
+            recommendation = call_xai_grok(
+                xai_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+            )
             if recommendation:
                 return f"**Yes? (Grok) says:** {recommendation}"
             else:
@@ -497,25 +662,8 @@ if (
 with st.container(border=True):
     st.markdown("### 📝 Step 1: Define Your Decision & Options")
 
-    # New Decision button at the top
-    col_btn, col_info = st.columns([1, 4])
-    with col_btn:
-        if st.button("🧠 New Decision", help="Clear all fields and start fresh"):
-            # Clear all session state related to loading and AI generation
-            for key in [
-                "load_decision",
-                "decision_to_load",
-                "show_load_confirm",
-                "ai_generated_for",
-            ]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.success("Fresh start!")
-            st.rerun()
-    with col_info:
-        st.caption(
-            "💡 Start by entering your decision question and listing all possible options"
-        )
+    if "step1_complete" not in st.session_state:
+        st.session_state["step1_complete"] = False
 
     # Check if we need to load a decision
     if "load_decision" in st.session_state:
@@ -548,6 +696,7 @@ with st.container(border=True):
 
         # Also set num_criteria to match loaded criteria count
         st.session_state["num_criteria"] = len(loaded_criteria)
+        st.session_state["step1_complete"] = True
 
         del st.session_state["load_decision"]
     else:
@@ -557,35 +706,196 @@ with st.container(border=True):
         loaded_weights = []
         loaded_scores = {}
 
+    # Check for AI suggested options in session state
+    ai_suggested_options = st.session_state.get("ai_suggested_options", "")
+    pending_options_update = st.session_state.pop("pending_options_update", None)
+    if pending_options_update is not None:
+        st.session_state["options_text_area"] = pending_options_update
+        ai_suggested_options = pending_options_update
+
+    # Determine initial value for options text area
+    # Priority: loaded_options (from saved decision) > ai_suggested_options > empty
+    initial_options_value = loaded_options if loaded_options else ai_suggested_options
+
+    # Check API availability once for Step 1 actions
+    try:
+        available_apis = get_available_apis(st.secrets)
+    except Exception:
+        available_apis = {"openai": False, "xai": False}
+    has_openai = available_apis.get("openai", False)
+    has_xai = available_apis.get("xai", False)
+    has_any_api = has_openai or has_xai
+
+    if "openai_model" not in st.session_state:
+        st.session_state["openai_model"] = DEFAULT_OPENAI_MODEL
+    if "xai_model" not in st.session_state:
+        st.session_state["xai_model"] = DEFAULT_XAI_MODEL
+
+    decision = ""
+    options_text = initial_options_value
+
     col1, col2 = st.columns(2)
     with col1:
-        decision = st.text_input(
+        decision = st.text_area(
             "What are you deciding?",
             value=loaded_decision,
             placeholder="e.g., Quit job? Move cities? Buy Tesla?",
             help="Enter a clear question about what you're trying to decide",
+            height=120,
+            key="decision_input",
         )
         if not decision:
-            st.info("👆 Enter your decision question above to get started")
+            st.info("👆 Enter your decision question to start")
+        # Store decision in session state for button access
+        st.session_state["current_decision"] = decision
     with col2:
         options_text = st.text_area(
             "List your options (one per line):",
-            value=loaded_options,
+            value=initial_options_value,
             placeholder="Stay at current job\nSwitch to remote role\nStart freelance",
             height=120,
             help="Enter all possible options, one per line. Be comprehensive but realistic.",
+            key="options_text_area",
         )
         if not options_text.strip():
             st.info("👆 List all your options above, one per line")
 
-    # Check available APIs for AI suggestions
-    try:
-        available_apis = get_available_apis(st.secrets)
-        has_any_api = available_apis.get("openai", False) or available_apis.get(
-            "xai", False
-        )
-    except Exception:
-        has_any_api = False
+    # Buttons at the top
+    col_reset, col_ai_suggest, col_initial_take, col_continue = st.columns(4)
+    with col_reset:
+        if st.button(
+            "🧠 New Decision (reset)",
+            help="Clear all fields and start fresh",
+            use_container_width=True,
+        ):
+            # Clear all session state related to loading and AI generation
+            for key in [
+                "load_decision",
+                "decision_to_load",
+                "show_load_confirm",
+                "ai_generated_for",
+                "ai_suggested_options",
+                "current_decision",
+                "trigger_initial_decision",
+                "ai_final_verdict",
+                "ai_final_verdict_key",
+                "ai_comparison_result",
+                "custom_ai_prompt",
+            ]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.session_state["step1_complete"] = False
+            st.success("Fresh start!")
+            st.rerun()
+    with col_ai_suggest:
+        if st.button(
+            "🤖 AI Suggest Options",
+            help="Use AI to suggest options based on your decision question",
+            use_container_width=True,
+            disabled=not has_any_api,
+        ):
+            # Get decision from session state (set above)
+            current_decision = st.session_state.get("current_decision", "")
+            if not current_decision or not current_decision.strip():
+                st.warning("⚠️ Please enter a decision question first")
+            else:
+                # Determine which API to use
+                preferred_api = None
+                preferred_model = None
+
+                # Use preferred API from session state if set, otherwise auto-select
+                if st.session_state.get("preferred_ai_api") and available_apis.get(
+                    st.session_state.get("preferred_ai_api"), False
+                ):
+                    preferred_api = st.session_state.get("preferred_ai_api")
+                elif has_xai:
+                    preferred_api = "xai"
+                elif has_openai:
+                    preferred_api = "openai"
+
+                if preferred_api == "openai":
+                    preferred_model = st.session_state.get(
+                        "openai_model", DEFAULT_OPENAI_MODEL
+                    )
+                elif preferred_api == "xai":
+                    preferred_model = st.session_state.get(
+                        "xai_model", DEFAULT_XAI_MODEL
+                    )
+
+                if preferred_api:
+                    with st.spinner("🤖 AI is suggesting options..."):
+                        try:
+                            api_key = (
+                                st.secrets.get("openai", {}).get("api_key")
+                                if preferred_api == "openai"
+                                else st.secrets.get("xai", {}).get("api_key")
+                            )
+
+                            suggested_options = get_ai_options_suggestions(
+                                current_decision,
+                                api_key,
+                                preferred_api,
+                                model=preferred_model,
+                            )
+
+                            if suggested_options:
+                                # Store suggested options in session state
+                                joined_options = "\n".join(suggested_options)
+                                st.session_state["ai_suggested_options"] = (
+                                    joined_options
+                                )
+                                st.session_state["pending_options_update"] = (
+                                    joined_options
+                                )
+                                st.session_state["trigger_initial_decision"] = True
+                                st.session_state["step1_complete"] = True
+                                st.session_state["use_ai"] = True
+                                st.session_state.pop("ai_generated_for", None)
+                                st.success(
+                                    f"✨ AI suggested {len(suggested_options)} options!"
+                                )
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "⚠️ Could not generate AI suggestions. Please try again."
+                                )
+                        except Exception as e:
+                            st.error(f"⚠️ Error generating AI suggestions: {str(e)}")
+                            logging.error(
+                                f"AI options suggestion error: {str(e)}", exc_info=True
+                            )
+                else:
+                    st.warning("⚠️ No API available for suggestions")
+        if not has_any_api:
+            st.caption("💡 Configure API keys to use AI suggestions")
+
+    with col_initial_take:
+        if st.button(
+            "💭 AI Initial Take",
+            help="Get AI's gut feeling based on just your question and options",
+            use_container_width=True,
+            disabled=(not has_any_api) or (not options_text.strip()),
+        ):
+            if not decision or not decision.strip() or not options_text.strip():
+                st.warning("⚠️ Please enter your decision and options first")
+            else:
+                st.session_state["trigger_initial_decision"] = True
+                st.rerun()
+
+    with col_continue:
+        if st.button(
+            "➡️ Continue to Step 2",
+            help="Proceed to set criteria and weights",
+            use_container_width=True,
+            disabled=not options_text.strip(),
+        ):
+            if not decision or not decision.strip():
+                st.warning("⚠️ Please enter your decision first")
+            elif not options_text.strip():
+                st.warning("⚠️ Please enter at least one option before continuing")
+            else:
+                st.session_state["step1_complete"] = True
+                st.rerun()
 
     # AI checkbox - only show if API is available
     if has_any_api:
@@ -620,6 +930,25 @@ with st.container(border=True):
                     use_openai if has_openai_api else False
                 )
 
+                if use_openai and has_openai_api:
+                    openai_model_default = st.session_state.get(
+                        "openai_model", DEFAULT_OPENAI_MODEL
+                    )
+                    openai_model = st.selectbox(
+                        "Model",
+                        options=[opt["id"] for opt in OPENAI_MODEL_OPTIONS],
+                        index=get_model_index(
+                            openai_model_default,
+                            OPENAI_MODEL_OPTIONS,
+                            DEFAULT_OPENAI_MODEL,
+                        ),
+                        format_func=lambda m: get_model_display(
+                            m, OPENAI_MODEL_OPTIONS
+                        ),
+                        key="openai_ai_model_select",
+                    )
+                    st.session_state["openai_model"] = openai_model
+
             with col_xai:
                 use_xai = st.checkbox(
                     "🤖 xAI Grok",
@@ -634,16 +963,41 @@ with st.container(border=True):
                 )
                 st.session_state["use_xai_ai"] = use_xai if has_xai_api else False
 
+                if use_xai and has_xai_api:
+                    xai_model_default = st.session_state.get(
+                        "xai_model", DEFAULT_XAI_MODEL
+                    )
+                    xai_model = st.selectbox(
+                        "Model",
+                        options=[opt["id"] for opt in XAI_MODEL_OPTIONS],
+                        index=get_model_index(
+                            xai_model_default,
+                            XAI_MODEL_OPTIONS,
+                            DEFAULT_XAI_MODEL,
+                        ),
+                        format_func=lambda m: get_model_display(m, XAI_MODEL_OPTIONS),
+                        key="xai_ai_model_select",
+                    )
+                    st.session_state["xai_model"] = xai_model
+
             # Determine which API to use based on checkboxes
             # Priority: xAI if both checked, then OpenAI, then fallback
             if st.session_state.get("use_xai_ai", False) and has_xai_api:
                 st.session_state["preferred_ai_api"] = "xai"
+                st.session_state["preferred_ai_model"] = st.session_state.get(
+                    "xai_model", DEFAULT_XAI_MODEL
+                )
             elif st.session_state.get("use_openai_ai", False) and has_openai_api:
                 st.session_state["preferred_ai_api"] = "openai"
+                st.session_state["preferred_ai_model"] = st.session_state.get(
+                    "openai_model", DEFAULT_OPENAI_MODEL
+                )
             else:
                 st.session_state["preferred_ai_api"] = None  # Fallback
+                st.session_state["preferred_ai_model"] = None
         else:
             st.session_state["preferred_ai_api"] = None
+            st.session_state["preferred_ai_model"] = None
     else:
         st.session_state["use_ai"] = False
         st.session_state["preferred_ai_api"] = None
@@ -669,6 +1023,91 @@ if len(options) != len(raw_options):
 if not options:
     st.error("⚠️ No valid options after processing. Please enter at least one option.")
     st.stop()
+
+# === INITIAL AI DECISION (Step 1.5) ===
+# Show initial AI decision based on just question and options (triggered by button)
+if decision and options:
+    # Check available APIs
+    try:
+        available_apis = get_available_apis(st.secrets)
+        has_openai = available_apis.get("openai", False)
+        has_xai = available_apis.get("xai", False)
+        has_any_api = has_openai or has_xai
+    except Exception:
+        has_any_api = False
+        has_openai = False
+        has_xai = False
+
+    if has_any_api and st.session_state.get("use_ai", False):
+        # Determine which API to use for initial decision
+        preferred_api = None
+        preferred_model = None
+        if st.session_state.get("use_xai_ai", False) and has_xai:
+            preferred_api = "xai"
+        elif st.session_state.get("use_openai_ai", False) and has_openai:
+            preferred_api = "openai"
+        elif has_xai:
+            preferred_api = "xai"
+        elif has_openai:
+            preferred_api = "openai"
+
+        if preferred_api == "xai":
+            preferred_model = st.session_state.get("xai_model", DEFAULT_XAI_MODEL)
+        elif preferred_api == "openai":
+            preferred_model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
+
+        # Check if user triggered initial decision
+        decision_hash = f"{decision}_{','.join(options)}"
+        initial_decision_key = f"initial_decision_{decision_hash}"
+
+        # Generate initial decision if button was clicked
+        if st.session_state.get("trigger_initial_decision", False):
+            if initial_decision_key not in st.session_state:
+                with st.spinner("🤖 Getting AI's initial take..."):
+                    try:
+                        # Initial decision doesn't use custom prompt (just question + options)
+                        initial_decision = get_ai_initial_decision(
+                            decision,
+                            options,
+                            None,
+                            preferred_api,
+                            preferred_model,
+                        )
+                        st.session_state[initial_decision_key] = initial_decision
+                    except Exception as e:
+                        logging.error(
+                            f"Error getting initial decision: {str(e)}", exc_info=True
+                        )
+                        st.session_state[initial_decision_key] = None
+            # Clear trigger
+            if "trigger_initial_decision" in st.session_state:
+                del st.session_state["trigger_initial_decision"]
+
+        # Display initial decision if available
+        if st.session_state.get(initial_decision_key):
+            with st.container(border=True):
+                st.markdown("### 💭 AI's Initial Take")
+                st.caption(
+                    "💡 AI's gut feeling based on just your question and options (before any scoring)"
+                )
+                st.info(st.session_state[initial_decision_key])
+                # Option to regenerate
+                if st.button(
+                    "🔄 Regenerate Initial Take",
+                    key="regenerate_initial",
+                    help="Get a fresh AI take on your decision",
+                ):
+                    # Clear existing decision and trigger regeneration
+                    del st.session_state[initial_decision_key]
+                    st.session_state["trigger_initial_decision"] = True
+                    st.rerun()
+
+if not st.session_state.get("step1_complete", False):
+    st.stop()
+
+# Initialize params and weights to satisfy linters (will be populated in Step 2)
+params = []
+weights = []
 
 # === STEP 2: Criteria + Weights ===
 with st.container(border=True):
@@ -722,13 +1161,18 @@ with st.container(border=True):
                             if api_type == "openai"
                             else st.secrets.get("xai", {}).get("api_key")
                         )
+                        api_model = (
+                            st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
+                            if api_type == "openai"
+                            else st.session_state.get("xai_model", DEFAULT_XAI_MODEL)
+                        )
 
                         # Step 1: Generate criteria and weights together (saves tokens)
                         criteria_suggestions = None
                         weight_suggestions = None
 
                         criteria_and_weights = get_ai_criteria_and_weights_suggestions(
-                            decision, options, api_key, api_type
+                            decision, options, api_key, api_type, api_model
                         )
 
                         if criteria_and_weights:
@@ -751,7 +1195,7 @@ with st.container(border=True):
                         else:
                             # Fallback: try separate calls if combined fails
                             criteria_suggestions = get_ai_criteria_suggestions(
-                                decision, options, api_key, api_type
+                                decision, options, api_key, api_type, api_model
                             )
 
                             if criteria_suggestions:
@@ -769,6 +1213,7 @@ with st.container(border=True):
                                     criteria_suggestions,
                                     api_key,
                                     api_type,
+                                    api_model,
                                 )
 
                                 if weight_suggestions:
@@ -789,6 +1234,7 @@ with st.container(border=True):
                                     criteria_suggestions,
                                     api_key,
                                     api_type,
+                                    api_model,
                                 )
 
                                 if score_suggestions:
@@ -830,6 +1276,7 @@ with st.container(border=True):
                             ):
                                 st.markdown("**API Configuration:**")
                                 st.write(f"- API Type: {api_type}")
+                                st.write(f"- Model: {api_model}")
                                 st.write(f"- Has OpenAI: {has_openai}")
                                 st.write(f"- Has xAI: {has_xai}")
                                 st.markdown("---")
@@ -984,8 +1431,8 @@ with st.container(border=True):
                 )
             if param:
                 st.caption(f"Current weight: {weight*100:.0f}%")
-                params.append(param)
-                weights.append(weight)
+            params.append(param)
+            weights.append(weight)
 
     # Normalize weights
     total_weight = sum(weights)
@@ -1051,7 +1498,7 @@ with st.container(border=True):
                     st.caption(f"Weighted: {weighted:.2f}")
                     data[f"{param} (1-10)"].append(score)
                     data[f"{param} (Weighted)"].append(round(weighted, 2))
-            st.markdown("---")
+        st.markdown("---")
 
     df = pd.DataFrame(data)
     df["Total Score"] = df.filter(like="(Weighted)").sum(axis=1)
@@ -1079,10 +1526,19 @@ with st.container(border=True):
     )
     st.plotly_chart(fig, width="stretch")
 
-# === AI RECOMMENDATION (Optional) ===
-with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
+# === AI VERDICT & INSIGHTS ===
+with st.expander("🤖 AI Verdict & Insights", expanded=False):
     st.caption(
-        "💡 Get additional AI insights (the highest score already shows the best option)"
+        "💡 Let AI summarize your results, add context, and compare with the initial take."
+    )
+
+    # Custom prompt field for user context
+    custom_prompt = st.text_area(
+        "💬 Additional context (optional):",
+        value=st.session_state.get("custom_ai_prompt", ""),
+        placeholder="e.g., I'm risk-averse, or Consider my budget constraints, or What if I prioritize work-life balance?",
+        help="Add any additional context, constraints, or questions for the AI to consider in the recommendation",
+        key="custom_ai_prompt_input",
     )
 
     # Check available APIs
@@ -1096,6 +1552,7 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
 
     # API selection checkboxes for final recommendation
     preferred_api = None
+    preferred_model = None
     if has_openai or has_xai:
         col_openai_rec, col_xai_rec = st.columns(2)
 
@@ -1113,6 +1570,23 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
             )
             st.session_state["use_openai_rec"] = use_openai_rec if has_openai else False
 
+            if use_openai_rec and has_openai:
+                openai_model_default = st.session_state.get(
+                    "openai_model", DEFAULT_OPENAI_MODEL
+                )
+                openai_rec_model = st.selectbox(
+                    "Model",
+                    options=[opt["id"] for opt in OPENAI_MODEL_OPTIONS],
+                    index=get_model_index(
+                        openai_model_default,
+                        OPENAI_MODEL_OPTIONS,
+                        DEFAULT_OPENAI_MODEL,
+                    ),
+                    format_func=lambda m: get_model_display(m, OPENAI_MODEL_OPTIONS),
+                    key="openai_rec_model_select",
+                )
+                st.session_state["openai_model"] = openai_rec_model
+
         with col_xai_rec:
             use_xai_rec = st.checkbox(
                 "🤖 xAI Grok",
@@ -1127,14 +1601,32 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
             )
             st.session_state["use_xai_rec"] = use_xai_rec if has_xai else False
 
+            if use_xai_rec and has_xai:
+                xai_model_default = st.session_state.get("xai_model", DEFAULT_XAI_MODEL)
+                xai_rec_model = st.selectbox(
+                    "Model",
+                    options=[opt["id"] for opt in XAI_MODEL_OPTIONS],
+                    index=get_model_index(
+                        xai_model_default,
+                        XAI_MODEL_OPTIONS,
+                        DEFAULT_XAI_MODEL,
+                    ),
+                    format_func=lambda m: get_model_display(m, XAI_MODEL_OPTIONS),
+                    key="xai_rec_model_select",
+                )
+                st.session_state["xai_model"] = xai_rec_model
+
         # Determine which API to use based on checkboxes
         # Priority: xAI if both checked, then OpenAI, then fallback
         if st.session_state.get("use_xai_rec", False) and has_xai:
             preferred_api = "xai"
+            preferred_model = st.session_state.get("xai_model", DEFAULT_XAI_MODEL)
         elif st.session_state.get("use_openai_rec", False) and has_openai:
             preferred_api = "openai"
+            preferred_model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
         else:
             preferred_api = None  # Fallback
+            preferred_model = None
 
         if preferred_api is None:
             st.warning(
@@ -1144,13 +1636,150 @@ with st.expander("🤖 AI Recommendation (Optional)", expanded=False):
         st.warning(
             "⚠️ No API keys configured. Using fallback recommendation. Configure API keys in Streamlit secrets to get real AI recommendations."
         )
+        preferred_api = None
+        preferred_model = None
+
+    # Get initial decision for comparison
+    decision_hash = f"{decision}_{','.join(options)}"
+    initial_decision_key = f"initial_decision_{decision_hash}"
+    initial_decision = st.session_state.get(initial_decision_key, None)
+
+    # Clear stored verdict if it belongs to a different decision/options set
+    stored_verdict_key = st.session_state.get("ai_final_verdict_key")
+    if stored_verdict_key and stored_verdict_key != decision_hash:
+        st.session_state.pop("ai_final_verdict", None)
+        st.session_state.pop("ai_final_verdict_key", None)
+        st.session_state.pop("ai_comparison_result", None)
+
+    stored_final_verdict = st.session_state.get("ai_final_verdict")
+    stored_comparison = st.session_state.get("ai_comparison_result")
 
     if st.button("🤖 Get AI Verdict", type="primary", width="stretch"):
+        # Get custom prompt from text area (submitted with button click)
+        custom_prompt_value = custom_prompt.strip() if custom_prompt else None
+        st.session_state["custom_ai_prompt"] = custom_prompt_value
+
         with st.spinner("Yes? is thinking..."):
-            verdict = get_ai_recommendation(
-                decision, options, df, params, weights, preferred_api
+            # Get final recommendation with custom prompt
+            final_verdict = get_ai_recommendation(
+                decision,
+                options,
+                df,
+                params,
+                weights,
+                custom_prompt_value,
+                preferred_api,
+                preferred_model,
             )
-            st.info(verdict)
+
+            # Show final verdict
+            st.session_state["ai_final_verdict"] = final_verdict
+            st.session_state["ai_final_verdict_key"] = decision_hash
+
+            # Show comparison if initial decision exists
+            if initial_decision:
+                # Get AI comparison if both APIs available
+                if has_openai or has_xai:
+                    with st.spinner("🤖 Analyzing differences..."):
+                        try:
+                            comparison_prompt = f"""
+Initial AI Decision: {initial_decision}
+Final AI Decision: {final_verdict}
+Decision Question: {decision}
+Options: {', '.join(options)}
+Top Scored Option: {df.iloc[0]['Option']} (Score: {df.iloc[0]['Total Score']:.2f})
+
+Compare the initial decision with the final decision. Did the structured analysis (criteria, weights, scores) confirm or contradict the initial assessment? What changed and why? Keep it concise (2-3 sentences).
+"""
+                            comparison_system = "You are a decision analysis expert. Compare initial vs final decisions and explain what changed."
+
+                            comparison_api = (
+                                preferred_api
+                                if preferred_api
+                                else ("openai" if has_openai else "xai")
+                            )
+                            comparison_key = (
+                                st.secrets.get(comparison_api, {}).get("api_key")
+                                if comparison_api == "openai"
+                                else st.secrets.get("xai", {}).get("api_key")
+                            )
+                            if comparison_api == "openai":
+                                comparison_model = (
+                                    preferred_model
+                                    if preferred_api == "openai" and preferred_model
+                                    else st.session_state.get(
+                                        "openai_model", DEFAULT_OPENAI_MODEL
+                                    )
+                                )
+                            else:
+                                comparison_model = (
+                                    preferred_model
+                                    if preferred_api == "xai" and preferred_model
+                                    else st.session_state.get(
+                                        "xai_model", DEFAULT_XAI_MODEL
+                                    )
+                                )
+
+                            if comparison_api == "openai":
+                                comparison_result = call_openai_gpt(
+                                    comparison_key,
+                                    comparison_prompt,
+                                    comparison_system,
+                                    model=comparison_model,
+                                    max_tokens=200,
+                                )
+                            else:
+                                comparison_result = call_xai_grok(
+                                    comparison_key,
+                                    comparison_prompt,
+                                    comparison_system,
+                                    model=comparison_model,
+                                    max_tokens=200,
+                                )
+
+                            if comparison_result:
+                                st.markdown("**🔍 Analysis:**")
+                                st.session_state["ai_comparison_result"] = (
+                                    comparison_result
+                                )
+                            else:
+                                st.session_state["ai_comparison_result"] = None
+                        except Exception as e:
+                            logging.error(
+                                f"Error getting comparison: {str(e)}", exc_info=True
+                            )
+                            st.session_state["ai_comparison_result"] = None
+                else:
+                    st.session_state["ai_comparison_result"] = None
+            else:
+                st.session_state["ai_comparison_result"] = None
+
+            stored_final_verdict = st.session_state.get("ai_final_verdict")
+            stored_comparison = st.session_state.get("ai_comparison_result")
+
+    # Display stored results (if any)
+    if stored_final_verdict:
+        st.markdown("### 🎯 AI Verdict")
+        st.info(stored_final_verdict)
+
+        if initial_decision:
+            st.markdown("---")
+            st.markdown("### 📊 Decision Comparison")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**💭 Initial Take**")
+                st.info(initial_decision)
+            with col2:
+                st.markdown("**🎯 Final Verdict**")
+                st.info(stored_final_verdict)
+
+            if stored_comparison:
+                st.markdown("**🔍 Analysis:**")
+                st.success(stored_comparison)
+            else:
+                st.caption(
+                    "💡 Compare the two decisions above to see how structured analysis changed the recommendation."
+                )
 
 # === SAVE DECISION ===
 with st.container(border=True):

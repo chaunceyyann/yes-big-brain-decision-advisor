@@ -15,12 +15,15 @@ logger = logging.getLogger(__name__)
 TIMEOUT_SHORT = 15  # For criteria and weights (smaller responses)
 TIMEOUT_LONG = 30  # For scores (larger responses, more tokens)
 
+DEFAULT_OPENAI_MODEL = "gpt-3.5-turbo"
+DEFAULT_XAI_MODEL = "grok-3"
+
 
 def call_openai_gpt(
     api_key: str,
     prompt: str,
     system_prompt: str = None,
-    model: str = "gpt-3.5-turbo",
+    model: str = DEFAULT_OPENAI_MODEL,
     max_tokens: int = 150,
     timeout: int = None,
 ) -> Optional[str]:
@@ -99,7 +102,7 @@ def call_xai_grok(
     api_key: str,
     prompt: str,
     system_prompt: str = None,
-    model: str = "grok-3",
+    model: str = DEFAULT_XAI_MODEL,
     max_tokens: int = 150,
     timeout: int = None,
 ) -> Optional[str]:
@@ -210,8 +213,110 @@ def get_available_apis(secrets: Dict[str, Any]) -> Dict[str, bool]:
     return available
 
 
+def get_ai_options_suggestions(
+    decision: str,
+    api_key: str,
+    api_type: str = "openai",
+    model: Optional[str] = None,
+) -> Optional[list]:
+    """
+    Get AI suggestions for options based on decision question.
+
+    Args:
+        decision: Decision question
+        api_key: API key (OpenAI or xAI)
+        api_type: Type of API ('openai' or 'xai')
+        model: Specific model identifier to use (optional)
+
+    Returns:
+        List of suggested options or None if error
+    """
+    prompt = f"""Given this decision question:
+
+Decision: {decision}
+
+Suggest 3-8 realistic options (choices) that someone might consider for this decision.
+
+IMPORTANT: Return ONLY a comma-separated list of options, one per line, nothing else.
+
+Example:
+Stay at current job
+Switch to remote role
+Start freelance
+Take a sabbatical
+
+Do not include any explanation, just the list of options, one per line."""
+
+    system_prompt = "You are a decision analysis expert. Provide realistic, relevant options for decision-making."
+
+    logger.info(f"[OPTIONS] Prompt: {prompt}")
+    logger.info(f"[OPTIONS] Decision: {decision}")
+
+    try:
+        if api_type == "openai":
+            openai_model = model or DEFAULT_OPENAI_MODEL
+            result = call_openai_gpt(
+                api_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+                max_tokens=200,
+            )
+        else:
+            xai_model = model or DEFAULT_XAI_MODEL
+            result = call_xai_grok(
+                api_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+                max_tokens=200,
+            )
+
+        logger.info(f"[OPTIONS] Raw API response: {result}")
+
+        if result:
+            # Clean the result - remove any markdown formatting or extra text
+            result = result.strip()
+            # Remove markdown code blocks if present
+            if result.startswith("```"):
+                lines = result.split("\n")
+                result = "\n".join(
+                    [l for l in lines if not l.strip().startswith("```")]
+                )
+
+            # Parse options - split by newline or comma
+            options = []
+            for line in result.split("\n"):
+                line = line.strip()
+                if line:
+                    # If line contains commas, split by comma
+                    if "," in line:
+                        options.extend(
+                            [opt.strip() for opt in line.split(",") if opt.strip()]
+                        )
+                    else:
+                        options.append(line)
+
+            # Also try comma-separated if no newlines
+            if not options:
+                options = [opt.strip() for opt in result.split(",") if opt.strip()]
+
+            options = options[:8]  # Limit to 8 options
+            logger.info(f"[OPTIONS] Parsed options: {options}")
+            return options if options else None
+        logger.warning("[OPTIONS] No result from API")
+        return None
+    except Exception as e:
+        logger.error(f"Error getting AI options suggestions: {str(e)}", exc_info=True)
+        return None
+
+
 def get_ai_criteria_suggestions(
-    decision: str, options: list, api_key: str, api_type: str = "openai"
+    decision: str,
+    options: list,
+    api_key: str,
+    api_type: str = "openai",
+    model: Optional[str] = None,
 ) -> Optional[list]:
     """
     Get AI suggestions for criteria based on decision and options.
@@ -221,6 +326,7 @@ def get_ai_criteria_suggestions(
         options: List of options
         api_key: API key (OpenAI or xAI)
         api_type: Type of API ('openai' or 'xai')
+        model: Specific model identifier to use (optional)
 
     Returns:
         List of suggested criteria or None if error
@@ -246,9 +352,23 @@ Do not include any explanation, just the list."""
 
     try:
         if api_type == "openai":
-            result = call_openai_gpt(api_key, prompt, system_prompt, max_tokens=150)
+            openai_model = model or DEFAULT_OPENAI_MODEL
+            result = call_openai_gpt(
+                api_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+                max_tokens=150,
+            )
         else:
-            result = call_xai_grok(api_key, prompt, system_prompt, max_tokens=150)
+            xai_model = model or DEFAULT_XAI_MODEL
+            result = call_xai_grok(
+                api_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+                max_tokens=150,
+            )
 
         logger.info(f"[CRITERIA] Raw API response: {result}")
 
@@ -275,7 +395,11 @@ Do not include any explanation, just the list."""
 
 
 def get_ai_criteria_and_weights_suggestions(
-    decision: str, options: list, api_key: str, api_type: str = "openai"
+    decision: str,
+    options: list,
+    api_key: str,
+    api_type: str = "openai",
+    model: Optional[str] = None,
 ) -> Optional[tuple]:
     """
     Get AI suggestions for both criteria and their weights in a single call.
@@ -285,6 +409,7 @@ def get_ai_criteria_and_weights_suggestions(
         options: List of options
         api_key: API key (OpenAI or xAI)
         api_type: Type of API ('openai' or 'xai')
+        model: Specific model identifier to use (optional)
 
     Returns:
         Tuple of (criteria_list, weights_dict) or None if error
@@ -319,9 +444,23 @@ Do not include any explanation, just the list."""
 
     try:
         if api_type == "openai":
-            result = call_openai_gpt(api_key, prompt, system_prompt, max_tokens=250)
+            openai_model = model or DEFAULT_OPENAI_MODEL
+            result = call_openai_gpt(
+                api_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+                max_tokens=250,
+            )
         else:
-            result = call_xai_grok(api_key, prompt, system_prompt, max_tokens=250)
+            xai_model = model or DEFAULT_XAI_MODEL
+            result = call_xai_grok(
+                api_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+                max_tokens=250,
+            )
 
         logger.info(f"[CRITERIA+WEIGHT] Raw API response: {result}")
 
@@ -376,7 +515,12 @@ Do not include any explanation, just the list."""
 
 
 def get_ai_weight_suggestions(
-    decision: str, options: list, criteria: list, api_key: str, api_type: str = "openai"
+    decision: str,
+    options: list,
+    criteria: list,
+    api_key: str,
+    api_type: str = "openai",
+    model: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Get AI suggestions for weights for each criterion.
@@ -387,6 +531,7 @@ def get_ai_weight_suggestions(
         criteria: List of criteria
         api_key: API key (OpenAI or xAI)
         api_type: Type of API ('openai' or 'xai')
+        model: Specific model identifier to use (optional)
 
     Returns:
         Dictionary mapping criteria to suggested weights (0.0-1.0) or None if error
@@ -419,9 +564,23 @@ Do not include any explanation, just the list."""
 
     try:
         if api_type == "openai":
-            result = call_openai_gpt(api_key, prompt, system_prompt, max_tokens=200)
+            openai_model = model or DEFAULT_OPENAI_MODEL
+            result = call_openai_gpt(
+                api_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+                max_tokens=200,
+            )
         else:
-            result = call_xai_grok(api_key, prompt, system_prompt, max_tokens=200)
+            xai_model = model or DEFAULT_XAI_MODEL
+            result = call_xai_grok(
+                api_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+                max_tokens=200,
+            )
 
         logger.info(f"[WEIGHT] Raw API response: {result}")
 
@@ -475,7 +634,12 @@ Do not include any explanation, just the list."""
 
 
 def get_ai_score_suggestions(
-    decision: str, options: list, criteria: list, api_key: str, api_type: str = "openai"
+    decision: str,
+    options: list,
+    criteria: list,
+    api_key: str,
+    api_type: str = "openai",
+    model: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Get AI suggestions for scores for each option on each criterion.
@@ -486,6 +650,7 @@ def get_ai_score_suggestions(
         criteria: List of criteria
         api_key: API key (OpenAI or xAI)
         api_type: Type of API ('openai' or 'xai')
+        model: Specific model identifier to use (optional)
 
     Returns:
         Dictionary mapping option -> criterion -> score (1-10) or None if error
@@ -521,9 +686,23 @@ Do not include any explanation, just the structured data."""
 
     try:
         if api_type == "openai":
-            result = call_openai_gpt(api_key, prompt, system_prompt, max_tokens=500)
+            openai_model = model or DEFAULT_OPENAI_MODEL
+            result = call_openai_gpt(
+                api_key,
+                prompt,
+                system_prompt,
+                model=openai_model,
+                max_tokens=500,
+            )
         else:
-            result = call_xai_grok(api_key, prompt, system_prompt, max_tokens=500)
+            xai_model = model or DEFAULT_XAI_MODEL
+            result = call_xai_grok(
+                api_key,
+                prompt,
+                system_prompt,
+                model=xai_model,
+                max_tokens=500,
+            )
 
         logger.info(f"[SCORE] Raw API response: {result}")
 
