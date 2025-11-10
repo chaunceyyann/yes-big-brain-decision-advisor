@@ -4,6 +4,17 @@
 .DS_Store
 Thumbs.db
 
+# App-specific
+decisions.json
+decisions.db
+decisions.db-journal
+
+# Wiki (not used - GitHub wiki requires paid plan)
+wiki/
+
+# Streamlit secrets (contains API keys)
+.streamlit/secrets.toml
+
 # Python
 *.pyc
 *.pyo
