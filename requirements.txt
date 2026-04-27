@@ -1,6 +1,6 @@
 # Core framework
 streamlit>=1.28.0
-watchdog>=3.0.0  # Optional but recommended for better file watching performance
+watchdog>=6.0.0  # Optional but recommended for better file watching performance
 
 # Data processing
 pandas>=2.0.0
