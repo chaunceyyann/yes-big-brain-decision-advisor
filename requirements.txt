@@ -11,6 +11,6 @@ plotly>=5.17.0
 matplotlib>=3.7.0
 
 # API integration (OpenAI GPT and xAI Grok APIs)
-requests>=2.31.0
+requests>=2.33.1
 
 # Note: SQLite (sqlite3) is included in Python standard library, no installation needed
