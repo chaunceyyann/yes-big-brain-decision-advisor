@@ -1,22 +1,26 @@
 # Contributing Guidelines
 
-## Branch Naming: `type/jira-123`
+This repo uses **trunk-based development**: short-lived branches off `main`, merge via PR, release with tags.
+
+## Branch Naming: `type/issue-123`
 
 **Requirements:** Lowercase, kebab-case, type prefix
 
-**Valid:** `feature/jira-123`, `bugfix/proj-456`, `hotfix/issue-789`
-**Invalid:** `Feature/JIRA-123`, `feature/jira_123`, `jira-123`
+**Valid:** `feature/issue-123`, `bugfix/issue-456`, `hotfix/issue-789`
+**Invalid:** `Feature/Issue-123`, `feature/issue_123`, `issue-123`
 
-**Protected branches:** `main`, `dev` - no force push, PR required
+**Protected branch:** `main` — no force push; PRs required
+
+Do not create long-lived branches (`dev`, `develop`, `release/*`). Ship from `main` and cut releases with tags.
 
 ---
 
-## Commit Messages: `jira-123: description`
+## Commit Messages: `issue-123: description`
 
-**Requirements:** Lowercase, kebab-case ticket, colon + space
+**Requirements:** Lowercase ticket ref, colon + space
 
-**Valid:** `jira-123: add feature`, `proj-456: fix bug`, `deps-auto: update package`
-**Invalid:** `JIRA-123: Add feature`, `jira-123 add feature`, `Add feature`
+**Valid:** `issue-123: add feature`, `issue-456: fix bug`, `deps-auto: update package`
+**Invalid:** `Issue-123: Add feature`, `issue-123 add feature`, `Add feature`
 
 ---
 
@@ -29,34 +33,37 @@
 
 **Protection:** No force updates or deletions
 
+Tag releases from `main` after merge (e.g. `git tag -a v1.0.0 -m "MVP1"` then `git push origin v1.0.0`).
+
 ---
 
 ## Pull Request Process
 
-1. **Branch from `dev`:**
+1. **Branch from `main`:**
    ```bash
-   git checkout dev && git pull
-   git checkout -b feature/jira-123
+   git checkout main && git pull
+   git checkout -b feature/issue-123
    ```
 
 2. **Commit with proper format:**
    ```bash
-   git commit -m "jira-123: implement feature"
+   git commit -m "issue-123: implement feature"
    ```
 
-3. **Push and create PR:**
+3. **Push and create PR into `main`:**
    ```bash
-   git push origin feature/jira-123
+   git push origin feature/issue-123
+   gh pr create --base main
    ```
 
 4. **PR Requirements:**
    - Fill out template (auto-populates)
-   - Link JIRA ticket
-   - 1 approval required
-   - All status checks pass: `pr-checks`, `static-code-scan`, `terraform-plan`
+   - Link the GitHub issue
+   - 1 approval required (when configured)
+   - All status checks pass
    - All conversations resolved
 
-5. **After merge:** Branch auto-deletes
+5. **After merge:** Branch auto-deletes; deploy/release from `main` via tags
 
 ---
 
@@ -74,5 +81,4 @@ pre-commit install --hook-type commit-msg
 ## Questions?
 
 - Check GitHub Actions logs for specific errors
-- Review [rulesets/README.md](./rulesets/README.md)
 - See [.github/workflows/README.md](./.github/workflows/README.md)

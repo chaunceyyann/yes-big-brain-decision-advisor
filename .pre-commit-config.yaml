@@ -34,7 +34,7 @@ repos:
         types: [yaml, json]
         description: Format YAML and JSON files
 
-  - repo: https://github.com/chaunceyyann/cyan-actions
+  - repo: git@github.com:chaunceyyann/cyan-actions.git
     rev: v0.1  # or main, or a tag/commit hash
     hooks:
       - id: jira-commit-msg

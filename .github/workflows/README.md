@@ -3,12 +3,12 @@
 ## Active Workflows
 
 ### `pr-checks.yaml`
-Runs on pull requests to `main` and `dev` branches. Performs:
+Runs on pull requests to `main`. Performs:
 - **Pre-commit checks** - Code linting and formatting validation
 - **Terraform lint** - Infrastructure code validation
 - **PR status comment** - Posts a comment on the PR with check results
 
-This workflow ensures code quality and consistency before merging.
+This workflow ensures code quality and consistency before merging to trunk.
 
 ---
 
@@ -16,7 +16,7 @@ This workflow ensures code quality and consistency before merging.
 
 **Workflow doesn't run?**
 - Check that GitHub Actions is enabled in repository settings
-- Verify the PR is targeting `main` or `dev` branch
+- Verify the PR is targeting `main`
 
 **Checks failing?**
 - Review the workflow logs in the Actions tab

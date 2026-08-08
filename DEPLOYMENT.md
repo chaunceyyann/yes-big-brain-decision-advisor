@@ -13,7 +13,7 @@
    - Go to [share.streamlit.io](https://share.streamlit.io)
    - Click "New app"
    - Select your GitHub repository: `chaunceyyann/yes-big-brain-decision-advisor`
-   - Choose branch: `dev` (for development deployment)
+   - Choose branch: `main`
    - Set main file path: `src/app.py`
    - **Important**: Ensure `requirements.txt` is in the root directory (it should be automatically detected)
    - If dependencies aren't installing, try:
@@ -45,10 +45,10 @@
    - Click "Deploy" - Streamlit Cloud will automatically deploy your app
    - The app will be available at: `https://your-app-name.streamlit.app`
 
-### Development vs Production
+### Releases
 
-- **Development**: Deploy from `dev` branch
-- **Production**: Deploy from `main` branch (via release branches)
+- Deploy from `main` (trunk-based)
+- Cut production releases with annotated tags (`v1.0.0`, etc.)
 
 ### Local Development Setup
 
