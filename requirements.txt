@@ -8,7 +8,7 @@ numpy>=1.24.0
 
 # Visualization
 plotly>=5.17.0
-matplotlib>=3.7.0
+matplotlib>=3.11.1
 
 # API integration (OpenAI GPT and xAI Grok APIs)
 requests>=2.31.0
