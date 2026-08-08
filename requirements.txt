@@ -1,16 +1,16 @@
 # Core framework
-streamlit>=1.28.0
-watchdog>=3.0.0  # Optional but recommended for better file watching performance
+streamlit>=1.61.0
+watchdog>=6.0.0  # Optional but recommended for better file watching performance
 
 # Data processing
-pandas>=2.0.0
+pandas>=3.0.5
 numpy>=1.24.0
 
 # Visualization
 plotly>=5.17.0
-matplotlib>=3.7.0
+matplotlib>=3.11.1
 
 # API integration (OpenAI GPT and xAI Grok APIs)
-requests>=2.31.0
+requests>=2.34.2
 
 # Note: SQLite (sqlite3) is included in Python standard library, no installation needed
