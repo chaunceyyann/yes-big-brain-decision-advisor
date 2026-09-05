@@ -1,5 +1,5 @@
 # Core framework
-streamlit>=1.61.0
+streamlit>=1.63.0
 watchdog>=6.0.0  # Optional but recommended for better file watching performance
 
 # Data processing
